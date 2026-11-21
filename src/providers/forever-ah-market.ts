@@ -195,14 +195,30 @@ export class ForeverAHMarketAdapter implements MarketDataProvider {
 
   async fetchMarketSnapshot(
     market: NormalizedMarket,
-    options: { maxPages?: number; pageSize?: number } = {}
+    options: { maxPages?: number; pageSize?: number; itemIds?: number[] } = {}
   ): Promise<NormalizedItemMarketRow[]> {
-    const pageSize = Math.min(Math.max(options.pageSize ?? 500, 1), 1000);
-    const maxPages = options.maxPages ?? 50;
+    // Forever AH caps page size at 200 rows per request; advance offset by actual rows returned.
+    const pageSize = Math.min(Math.max(options.pageSize ?? 200, 1), 200);
+    const maxPages = options.maxPages ?? 60;
     const rows: NormalizedItemMarketRow[] = [];
 
+    if (options.itemIds && options.itemIds.length > 0) {
+      for (let i = 0; i < options.itemIds.length; i += 100) {
+        const batch = options.itemIds.slice(i, i + 100);
+        const url = `${BASE_URL}/v1/houses/${encodeURIComponent(market.providerKey)}/market?limit=200&ids=${batch.join(",")}`;
+        const { data } = await fetchValidatedJson(
+          url,
+          foreverAhMarketResponseSchema,
+          { fetchImpl: this.fetchImpl, timeoutMs: 30_000 },
+          this.rateLimiter
+        );
+        rows.push(...this.mapMarketRows(market.id, data));
+      }
+      return rows;
+    }
+
+    let offset = 0;
     for (let page = 1; page <= maxPages; page++) {
-      const offset = (page - 1) * pageSize;
       const url = `${BASE_URL}/v1/houses/${encodeURIComponent(market.providerKey)}/market?limit=${pageSize}&offset=${offset}`;
       const { data } = await fetchValidatedJson(
         url,
@@ -211,59 +227,69 @@ export class ForeverAHMarketAdapter implements MarketDataProvider {
         this.rateLimiter
       );
 
-      const fallbackTs = data.as_of ? new Date(data.as_of) : new Date();
+      rows.push(...this.mapMarketRows(market.id, data));
+      offset += data.rows.length;
 
-      for (const row of data.rows) {
-        const cur = row.current ?? null;
-        const stats = row.stats ?? null;
-        const minUnit = cur?.min_unit ?? null;
-        const p10Unit = cur?.p10_unit ?? null;
-        const medianUnit = cur?.median_unit ?? null;
-        const meanUnit = cur?.mean_unit ?? null;
-        const marketValue = stats?.market_value ?? null;
-        const historicalValue = stats?.historical_value ?? null;
-        const clearing = computeClearingPriceCopper({
-          minUnit,
-          p10Unit,
-          medianUnit,
-          marketValue,
-        });
-
-        const hasSoldPerDay =
-          stats?.sold_per_day !== null && stats?.sold_per_day !== undefined;
-
-        rows.push({
-          marketId: market.id,
-          itemId: row.item.item_id,
-          lowestBuyoutCopper: minUnit !== null ? Math.round(minUnit) : null,
-          p10Copper: p10Unit !== null ? Math.round(p10Unit) : null,
-          medianCopper: medianUnit !== null ? Math.round(medianUnit) : null,
-          meanCopper: meanUnit !== null ? Math.round(meanUnit) : null,
-          marketValueCopper: marketValue !== null ? Math.round(marketValue) : null,
-          historicalValueCopper:
-            historicalValue !== null ? Math.round(historicalValue) : null,
-          clearingPriceCopper: clearing,
-          availableQty: cur?.quantity ?? 0,
-          listingCount: cur?.listings ?? 0,
-          change24hPct: row.median_change_pct ?? null,
-          trend7dPct: stats?.trend_pct ?? null,
-          trend30dPct: null,
-          estimatedSoldPerDay: hasSoldPerDay ? (stats?.sold_per_day ?? null) : null,
-          daysSeen: stats?.days_seen ?? null,
-          // Forever AH sold_per_day is algorithmically estimated from snapshot diffs
-          salesDataStatus: hasSoldPerDay ? "ESTIMATED" : "MISSING",
-          priceStatus: cur ? "ACTUAL" : "MISSING",
-          source: this.sourceId,
-          snapshotAt: cur?.ts ? new Date(cur.ts) : fallbackTs,
-        });
-      }
-
-      if (data.rows.length < pageSize || offset + data.rows.length >= data.total) {
+      if (data.rows.length === 0 || offset >= data.total) {
         break;
       }
     }
 
     return rows;
+  }
+
+  private mapMarketRows(
+    marketId: string,
+    data: z.infer<typeof foreverAhMarketResponseSchema>
+  ): NormalizedItemMarketRow[] {
+    const fallbackTs = data.as_of ? new Date(data.as_of) : new Date();
+    const mapped: NormalizedItemMarketRow[] = [];
+
+    for (const row of data.rows) {
+      const cur = row.current ?? null;
+      const stats = row.stats ?? null;
+      const minUnit = cur?.min_unit ?? null;
+      const p10Unit = cur?.p10_unit ?? null;
+      const medianUnit = cur?.median_unit ?? null;
+      const meanUnit = cur?.mean_unit ?? null;
+      const marketValue = stats?.market_value ?? null;
+      const historicalValue = stats?.historical_value ?? null;
+      const clearing = computeClearingPriceCopper({
+        minUnit,
+        p10Unit,
+        medianUnit,
+        marketValue,
+      });
+
+      const hasSoldPerDay =
+        stats?.sold_per_day !== null && stats?.sold_per_day !== undefined;
+
+      mapped.push({
+        marketId,
+        itemId: row.item.item_id,
+        lowestBuyoutCopper: minUnit !== null ? Math.round(minUnit) : null,
+        p10Copper: p10Unit !== null ? Math.round(p10Unit) : null,
+        medianCopper: medianUnit !== null ? Math.round(medianUnit) : null,
+        meanCopper: meanUnit !== null ? Math.round(meanUnit) : null,
+        marketValueCopper: marketValue !== null ? Math.round(marketValue) : null,
+        historicalValueCopper:
+          historicalValue !== null ? Math.round(historicalValue) : null,
+        clearingPriceCopper: clearing,
+        availableQty: cur?.quantity ?? 0,
+        listingCount: cur?.listings ?? 0,
+        change24hPct: row.median_change_pct ?? null,
+        trend7dPct: stats?.trend_pct ?? null,
+        trend30dPct: null,
+        estimatedSoldPerDay: hasSoldPerDay ? (stats?.sold_per_day ?? null) : null,
+        daysSeen: stats?.days_seen ?? null,
+        salesDataStatus: hasSoldPerDay ? "ESTIMATED" : "MISSING",
+        priceStatus: cur ? "ACTUAL" : "MISSING",
+        source: this.sourceId,
+        snapshotAt: cur?.ts ? new Date(cur.ts) : fallbackTs,
+      });
+    }
+
+    return mapped;
   }
 
   async fetchItemHistory(

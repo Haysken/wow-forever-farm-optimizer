@@ -46,7 +46,7 @@ A data-driven economic analysis web application for **World of Warcraft: Forever
 - [x] **Phase 1:** Technical feasibility assessment & architecture documentation
 - [x] **Phase 2:** Data foundation (PostgreSQL/Drizzle schema + migrations, provider adapters, loot resolver, ingestion workers, unit & live smoke tests)
 - [x] **Phase 3:** Core profitability engine (EGPH, EGPK, K50/K90, liquidity & `Si` model, vendor/BoP/coin routing, Monte Carlo farming simulator, PostgreSQL ranking service, full mathematical test suite)
-- [ ] **Phase 4:** Web application (Dashboard, Creature/Item pages, Charts, Simulator, Watchlist)
+- [x] **Phase 4:** Web application (Farm Ranking Dashboard, Creature Detail Verdict pages, Item Detail Cross-Faction pages, Recharts 24h/7d/30d history, Farming Simulator, Watchlist, Market Opportunities)
 - [ ] **Phase 5:** Optimization, scheduled sync, monitoring & production hardening
 
 ---
@@ -59,7 +59,10 @@ npm install
 
 # 2. Configure local environment (never commit .env.local)
 cp .env.example .env.local
-# Edit .env.local and set DATABASE_URL (e.g., Neon/Supabase PostgreSQL)
+# Edit .env.local and set DATABASE_URL (e.g., local portable PG17 or Neon/Supabase)
+# If using local portable PostgreSQL 17:
+#   .\scripts\start-pg.ps1   (start local server on 127.0.0.1:5432)
+#   .\scripts\stop-pg.ps1    (stop local server)
 # Optional: set EVERLOOKDB_API_KEY, BLIZZARD_CLIENT_ID, BLIZZARD_CLIENT_SECRET
 
 # 3. Apply PostgreSQL migrations

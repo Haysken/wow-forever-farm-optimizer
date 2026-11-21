@@ -173,7 +173,7 @@ export interface MarketDataProvider {
   fetchMarkets(regions?: string[]): Promise<NormalizedMarket[]>;
   fetchMarketSnapshot(
     market: NormalizedMarket,
-    options?: { maxPages?: number; pageSize?: number }
+    options?: { maxPages?: number; pageSize?: number; itemIds?: number[] }
   ): Promise<NormalizedItemMarketRow[]>;
   fetchItemHistory?(
     market: NormalizedMarket,
