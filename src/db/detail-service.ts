@@ -2,6 +2,10 @@ import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { loadCreatureProfitInput } from "@/db/profitability-service";
 import {
+  ensureCreatureHydrated,
+  ensureItemHydrated,
+} from "@/ingestion/on-demand-hydrator";
+import {
   calculateCreatureProfitability,
   DEFAULT_MARKET_COMMISSIONS,
   evaluateMarketLiquidity,
@@ -21,6 +25,7 @@ export async function getCreatureDetail(
   }
 ) {
   const db = getDb();
+  await ensureCreatureHydrated(creatureId, marketId);
   const loaded = await loadCreatureProfitInput(creatureId, marketId);
   if (!loaded) return null;
 
@@ -288,6 +293,8 @@ export async function getItemDetail(
     .limit(1);
 
   const region = options.region ?? selectedMarket?.region ?? "us";
+
+  await ensureItemHydrated(itemId, region, marketId);
 
   // All market snapshots for this item across the region (Alliance, Horde, Neutral)
   const marketRows = await db

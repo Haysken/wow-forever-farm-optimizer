@@ -127,6 +127,39 @@ const foreverAhHistoryResponseSchema = z.object({
   ),
 });
 
+const foreverAhItemHousesSchema = z.array(
+  z.object({
+    house: foreverAhHouseSchema,
+    point: z
+      .object({
+        ts: z.string(),
+        min_unit: z.number().nullable().optional(),
+        p10_unit: z.number().nullable().optional(),
+        median_unit: z.number().nullable().optional(),
+        mean_unit: z.number().nullable().optional(),
+        quantity: z.number().int().nonnegative().default(0),
+        listings: z.number().int().nonnegative().default(0),
+      })
+      .nullable()
+      .optional(),
+  })
+);
+
+const foreverAhItemStatsSchema = z.object({
+  house_key: z.number().int(),
+  computed_at: z.string().optional(),
+  stats: z
+    .object({
+      market_value: z.number().nullable().optional(),
+      historical_value: z.number().nullable().optional(),
+      trend_pct: z.number().nullable().optional(),
+      days_seen: z.number().int().nonnegative().nullable().optional(),
+      sold_per_day: z.number().nonnegative().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
 export interface ForeverAHAdapterOptions {
   maxRps?: number;
   fetchImpl?: typeof fetch;
@@ -322,5 +355,128 @@ export class ForeverAHMarketAdapter implements MarketDataProvider {
       listingCount: pt.listings,
       source: this.sourceId,
     }));
+  }
+
+  /**
+   * Fetches an item's live price snapshot across every auction house in a region
+   * (Alliance, Horde, Blackwater, and Unified pool) in a single HTTP request.
+   */
+  async fetchItemAcrossHouses(
+    itemId: number,
+    region: string
+  ): Promise<{ markets: NormalizedMarket[]; rows: NormalizedItemMarketRow[] }> {
+    const reg = region.toLowerCase();
+    const url = `${BASE_URL}/v1/items/${itemId}/houses?region=${encodeURIComponent(reg)}`;
+    const { data } = await fetchValidatedJson(
+      url,
+      foreverAhItemHousesSchema,
+      { fetchImpl: this.fetchImpl, timeoutMs: 20_000 },
+      this.rateLimiter
+    );
+
+    const markets: NormalizedMarket[] = [];
+    const rows: NormalizedItemMarketRow[] = [];
+
+    for (const entry of data) {
+      const h = entry.house;
+      const faction = inferFactionFromHouse(h);
+      const factionTitle =
+        faction === "alliance"
+          ? "Alliance"
+          : faction === "horde"
+            ? "Horde"
+            : faction === "neutral"
+              ? "Blackwater (Neutral)"
+              : "All Auction Houses";
+      const marketId = `${h.region.toLowerCase()}:${h.house_id}`;
+
+      markets.push({
+        id: marketId,
+        region: h.region.toLowerCase(),
+        rulesetId: h.ruleset_id,
+        rulesetLabel: null,
+        houseId: h.house_id,
+        faction,
+        displayName:
+          faction === "unified"
+            ? `${h.region.toUpperCase()} — All Auction Houses`
+            : `${h.region.toUpperCase()} House #${h.house_id} — ${factionTitle}`,
+        defaultCommissionRate: defaultCommissionForFaction(faction),
+        providerSource: this.sourceId,
+        providerKey: String(h.house_key),
+        lastSnapshotAt: h.last_snapshot ? new Date(h.last_snapshot) : null,
+      });
+
+      const pt = entry.point ?? null;
+      if (pt) {
+        const minUnit = pt.min_unit ?? null;
+        const p10Unit = pt.p10_unit ?? null;
+        const medianUnit = pt.median_unit ?? null;
+        const meanUnit = pt.mean_unit ?? null;
+        rows.push({
+          marketId,
+          itemId,
+          lowestBuyoutCopper: minUnit !== null ? Math.round(minUnit) : null,
+          p10Copper: p10Unit !== null ? Math.round(p10Unit) : null,
+          medianCopper: medianUnit !== null ? Math.round(medianUnit) : null,
+          meanCopper: meanUnit !== null ? Math.round(meanUnit) : null,
+          marketValueCopper: null,
+          historicalValueCopper: null,
+          clearingPriceCopper: computeClearingPriceCopper({
+            minUnit,
+            p10Unit,
+            medianUnit,
+            marketValue: null,
+          }),
+          availableQty: pt.quantity,
+          listingCount: pt.listings,
+          change24hPct: null,
+          trend7dPct: null,
+          trend30dPct: null,
+          estimatedSoldPerDay: null,
+          daysSeen: null,
+          salesDataStatus: "MISSING",
+          priceStatus: "ACTUAL",
+          source: this.sourceId,
+          snapshotAt: new Date(pt.ts),
+        });
+      }
+    }
+
+    return { markets, rows };
+  }
+
+  async fetchItemStats(
+    providerKey: string,
+    itemId: number
+  ): Promise<{
+    marketValueCopper: number | null;
+    historicalValueCopper: number | null;
+    trend7dPct: number | null;
+    daysSeen: number | null;
+    estimatedSoldPerDay: number | null;
+  } | null> {
+    const url = `${BASE_URL}/v1/houses/${encodeURIComponent(providerKey)}/items/${itemId}/stats`;
+    const { data } = await fetchValidatedJson(
+      url,
+      foreverAhItemStatsSchema,
+      { fetchImpl: this.fetchImpl, timeoutMs: 15_000 },
+      this.rateLimiter
+    );
+    const s = data.stats ?? null;
+    if (!s) return null;
+    return {
+      marketValueCopper:
+        s.market_value !== null && s.market_value !== undefined
+          ? Math.round(s.market_value)
+          : null,
+      historicalValueCopper:
+        s.historical_value !== null && s.historical_value !== undefined
+          ? Math.round(s.historical_value)
+          : null,
+      trend7dPct: s.trend_pct ?? null,
+      daysSeen: s.days_seen ?? null,
+      estimatedSoldPerDay: s.sold_per_day ?? null,
+    };
   }
 }

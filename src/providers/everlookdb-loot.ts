@@ -60,6 +60,42 @@ const everlookNpcDetailSchema = z.object({
     .optional(),
 });
 
+const everlookItemDetailSchema = z.object({
+  id: z.number().int().positive(),
+  build: z.string().nullable().optional(),
+  players: z
+    .object({
+      dropped_by: z
+        .array(
+          z.object({
+            id: z.number().int().positive(),
+            source: z.string().optional(),
+            how: z.string().optional(),
+            n: z.number().int().nonnegative().optional(),
+            drops: z.number().int().nonnegative(),
+            qty: z.number().int().nonnegative().optional(),
+            rate: z.number().min(0).max(1),
+          })
+        )
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+  classic_db: z
+    .object({
+      dropped_by: z
+        .array(
+          z.object({
+            npc: z.number().int().positive(),
+            chance: z.number().min(0).max(1),
+          })
+        )
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
 export interface EverlookNpcLootBundle {
   creatureId: number;
   clientBuild: string | null;
@@ -211,5 +247,79 @@ export class EverlookDBLootAdapter {
       spawns,
       observations,
     };
+  }
+
+  /**
+   * Fetches dropping creatures for a specific item from EverlookDB, keeping
+   * Forever player observations (`OBSERVED`) strictly separated from Classic 1.12 (`ESTIMATED`).
+   */
+  async fetchItemDrops(itemId: number): Promise<NormalizedDropObservation[]> {
+    const { data } = await fetchValidatedJson(
+      `${BASE_URL}/item/${itemId}.json`,
+      everlookItemDetailSchema,
+      { headers: this.headers, fetchImpl: this.fetchImpl, timeoutMs: 20_000 },
+      this.rateLimiter
+    );
+
+    const now = new Date();
+    const clientBuild = data.build ?? null;
+    const observations: NormalizedDropObservation[] = [];
+
+    for (const p of data.players?.dropped_by ?? []) {
+      if (p.source && p.source !== "npc") continue;
+      const method: LootMethod =
+        p.how === "skinning"
+          ? "skinning"
+          : p.how === "pickpocket"
+            ? "pickpocket"
+            : "kill";
+      const avgQty =
+        p.qty !== undefined && p.drops > 0 ? p.qty / p.drops : null;
+      observations.push({
+        creatureId: p.id,
+        itemId,
+        lootMethod: method,
+        source: "everlookdb_players",
+        killsObserved: p.n ?? null,
+        dropsObserved: p.drops,
+        totalQtyObserved: p.qty ?? null,
+        minQty: null,
+        maxQty: null,
+        avgQty,
+        dropRate: p.rate,
+        ciLow: null,
+        ciHigh: null,
+        reporterCount: null,
+        confidenceTier: "OBSERVED",
+        isQuestOnly: false,
+        clientBuild,
+        observedAt: now,
+      });
+    }
+
+    for (const c of data.classic_db?.dropped_by ?? []) {
+      observations.push({
+        creatureId: c.npc,
+        itemId,
+        lootMethod: "kill",
+        source: "classic_db",
+        killsObserved: null,
+        dropsObserved: null,
+        totalQtyObserved: null,
+        minQty: null,
+        maxQty: null,
+        avgQty: null,
+        dropRate: c.chance,
+        ciLow: null,
+        ciHigh: null,
+        reporterCount: null,
+        confidenceTier: "ESTIMATED",
+        isQuestOnly: false,
+        clientBuild,
+        observedAt: now,
+      });
+    }
+
+    return observations;
   }
 }

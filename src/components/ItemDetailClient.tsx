@@ -191,12 +191,20 @@ export function ItemDetailClient({
   const { item, markets, historyHourly, historyDaily, creatureSources } = data;
   const rarity = getRarityMeta(item.quality);
 
-  // Representative Alliance, Horde, and Neutral summary cards
+  // Representative Alliance, Horde, and Neutral summary cards (prefer houses with active listings)
+  const pickFactionMarket = (fac: "alliance" | "horde" | "neutral") =>
+    markets.find((m) => m.faction === fac && m.priceStatus === "ACTUAL") ??
+    markets.find((m) => m.faction === fac);
+
   const byFaction: Record<"alliance" | "horde" | "neutral", (typeof markets)[number] | undefined> = {
-    alliance: markets.find((m) => m.faction === "alliance"),
-    horde: markets.find((m) => m.faction === "horde"),
-    neutral: markets.find((m) => m.faction === "neutral"),
+    alliance: pickFactionMarket("alliance"),
+    horde: pickFactionMarket("horde"),
+    neutral: pickFactionMarket("neutral"),
   };
+
+  const activeRegionHouses = markets.filter(
+    (m) => m.priceStatus === "ACTUAL" && m.faction !== "unified"
+  );
 
   return (
     <div className="space-y-6">
@@ -383,6 +391,72 @@ export function ItemDetailClient({
           );
         })}
       </section>
+
+      {/* All Active Houses Breakdown in Region */}
+      {activeRegionHouses.length > 0 && (
+        <section className="overflow-hidden rounded-xl border border-zinc-800 bg-[#12161f]">
+          <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2.5">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-200">
+              All Active {region.toUpperCase()} Auction Houses ({activeRegionHouses.length})
+            </h2>
+            <span className="text-[11px] text-zinc-500">
+              Click any house to switch chart &amp; creature profitability
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#0d1017] text-[10px] uppercase text-zinc-400">
+                <tr>
+                  <th className="px-3 py-2">House</th>
+                  <th className="px-3 py-2">Faction</th>
+                  <th className="px-3 py-2 text-right">Lowest</th>
+                  <th className="px-3 py-2 text-right">Median</th>
+                  <th className="px-3 py-2 text-right">Clearing</th>
+                  <th className="px-3 py-2 text-right">Supply</th>
+                  <th className="px-3 py-2 text-right">Snapshot</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/70">
+                {activeRegionHouses.map((h) => (
+                  <tr
+                    key={h.marketId}
+                    onClick={() => setMarketId(h.marketId)}
+                    className={`cursor-pointer transition-colors hover:bg-amber-500/[0.06] ${
+                      h.marketId === marketId ? "bg-amber-500/10" : ""
+                    }`}
+                  >
+                    <td className="px-3 py-2 font-mono text-zinc-200">
+                      House #{h.houseId}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold capitalize ${factionBadgeClass(h.faction)}`}
+                      >
+                        {h.faction}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-200">
+                      {formatCopperFull(h.lowestBuyoutCopper)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-200">
+                      {formatCopperFull(h.medianCopper)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-amber-300">
+                      {formatCopperFull(h.clearingPriceCopper)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                      {h.availableQty.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[11px] text-zinc-500">
+                      {formatRelativeAge(h.snapshotAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* Price & Supply History Chart */}
       <PriceHistoryChart
