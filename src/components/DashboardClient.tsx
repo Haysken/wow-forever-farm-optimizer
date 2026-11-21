@@ -77,8 +77,8 @@ export function DashboardClient() {
   const [markets, setMarkets] = useState<MarketOption[]>([]);
   const [counts, setCounts] = useState<DbCounts | null>(null);
   const [region, setRegion] = useState<string>("us");
-  const [faction, setFaction] = useState<MarketFaction>("alliance");
-  const [marketId, setMarketId] = useState<string>("us:110");
+  const [faction, setFaction] = useState<MarketFaction>("unified");
+  const [marketId, setMarketId] = useState<string>("us:0");
 
   // Farming speed & economic controls
   const [speedPreset, setSpeedPreset] = useState<string>("average");
@@ -115,8 +115,12 @@ export function DashboardClient() {
           setCounts(data.counts ?? null);
           const first =
             data.markets.find(
+              (m: MarketOption) => m.region === "us" && m.faction === "unified"
+            ) ??
+            data.markets.find(
               (m: MarketOption) => m.region === "us" && m.faction === "alliance"
-            ) ?? data.markets[0];
+            ) ??
+            data.markets[0];
           if (first) {
             setRegion(first.region);
             setFaction(first.faction);

@@ -187,6 +187,115 @@ describe("ForeverAHMarketAdapter", () => {
     });
   });
 
+  it("handles nullable item names and preserves itemMeta for brand-new Forever AH items", async () => {
+    const fetchImpl = mockJsonFetch({
+      "/v1/houses/33/market": {
+        house: {
+          house_key: 33,
+          region: "eu",
+          ruleset_id: 2,
+          house_id: 0,
+          name: "All Auction Houses",
+          last_snapshot: "2026-11-21T16:00:00Z",
+          house_type: "unified",
+        },
+        as_of: "2026-11-21T16:00:00Z",
+        total: 2,
+        rows: [
+          {
+            item: {
+              item_id: 250385,
+              name: "Recipe: Elixir of Strength",
+              quality: "UNCOMMON",
+              item_class: "Recipe",
+              item_subclass: "Alchemy",
+              item_level: 45,
+              required_level: 0,
+              sell_price: 2500,
+            },
+            current: {
+              ts: "2026-11-21T16:00:00Z",
+              min_unit: 49900,
+              p10_unit: 55000,
+              median_unit: 70000,
+              mean_unit: 71000,
+              quantity: 5,
+              listings: 5,
+            },
+            median_change_pct: 12.5,
+            stats: {
+              market_value: 52000,
+              historical_value: 50000,
+              trend_pct: 4.0,
+              days_seen: 6,
+              sold_per_day: 2.5,
+            },
+          },
+          {
+            item: {
+              item_id: 299999,
+              name: null,
+              quality: null,
+              item_class: null,
+              item_subclass: null,
+              item_level: null,
+              required_level: null,
+              sell_price: null,
+            },
+            current: {
+              ts: "2026-11-21T16:00:00Z",
+              min_unit: 10000,
+              p10_unit: 10000,
+              median_unit: 10000,
+              mean_unit: 10000,
+              quantity: 1,
+              listings: 1,
+            },
+            median_change_pct: null,
+            stats: null,
+          },
+        ],
+      },
+    });
+
+    const adapter = new ForeverAHMarketAdapter({ maxRps: 100, fetchImpl });
+    const rows = await adapter.fetchMarketSnapshot({
+      id: "eu:0",
+      region: "eu",
+      rulesetId: 2,
+      rulesetLabel: null,
+      houseId: 0,
+      faction: "unified",
+      displayName: "EU — All Auction Houses",
+      defaultCommissionRate: 0.05,
+      providerSource: "forever_ah",
+      providerKey: "33",
+      lastSnapshotAt: null,
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      itemId: 250385,
+      clearingPriceCopper: 52000,
+      itemMeta: {
+        name: "Recipe: Elixir of Strength",
+        quality: "UNCOMMON",
+        itemClass: "Recipe",
+        itemSubclass: "Alchemy",
+        vendorSellCopper: 2500,
+      },
+    });
+    expect(rows[1]).toMatchObject({
+      itemId: 299999,
+      clearingPriceCopper: 10000,
+      itemMeta: {
+        name: "Item #299999",
+        quality: null,
+        vendorSellCopper: 0,
+      },
+    });
+  });
+
   it("computes clearing price with fallback to lowest buyout when robust stats are absent", () => {
     expect(
       computeClearingPriceCopper({

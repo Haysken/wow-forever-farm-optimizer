@@ -375,11 +375,24 @@ export async function getItemDetail(
     };
   });
 
-  // Historical price points (hourly 24h/7d + daily 30d) for selected market
-  const [historyHourly, historyDaily] = selectedMarket
+  // Historical price points (hourly 24h/7d + daily 30d):
+  // If requested market has no listings for this item, fall back to region's unified or first active house
+  // so brand-new Forever items listed on e.g. House #111 immediately show their real chart.
+  const selectedHasPrice = marketsWithLiquidity.some(
+    (m) => m.marketId === selectedMarket?.id && m.priceStatus === "ACTUAL"
+  );
+  const fallbackActiveMarketRow = !selectedHasPrice
+    ? (marketRows.find(
+        (r) => r.market.faction === "unified" && r.snapshot?.priceStatus === "ACTUAL"
+      ) ??
+      marketRows.find((r) => r.snapshot?.priceStatus === "ACTUAL"))
+    : undefined;
+  const effectiveMarket = fallbackActiveMarketRow?.market ?? selectedMarket ?? null;
+
+  const [historyHourly, historyDaily] = effectiveMarket
     ? await Promise.all([
-        getOrFetchItemHistory(selectedMarket, itemId, "hour"),
-        getOrFetchItemHistory(selectedMarket, itemId, "day"),
+        getOrFetchItemHistory(effectiveMarket, itemId, "hour"),
+        getOrFetchItemHistory(effectiveMarket, itemId, "day"),
       ])
     : [[], []];
 
@@ -461,7 +474,7 @@ export async function getItemDetail(
 
   return {
     item,
-    selectedMarket: selectedMarket ?? null,
+    selectedMarket: effectiveMarket,
     region,
     markets: marketsWithLiquidity,
     historyHourly: historyHourly.map((p) => ({
@@ -509,6 +522,7 @@ export async function unifiedSearch(query: string, limit = 15) {
           ? or(eq(schema.items.id, numericId), ilike(schema.items.name, pattern))
           : ilike(schema.items.name, pattern)
       )
+      .orderBy(asc(sql`length(${schema.items.name})`), desc(schema.items.id))
       .limit(limit),
     db
       .select({
@@ -542,10 +556,190 @@ export async function unifiedSearch(query: string, limit = 15) {
       .limit(10),
   ]);
 
+  const itemIds = foundItems.map((i) => i.id);
+  const priceByItem = new Map<number, { clearingPriceCopper: number | null; marketId: string }>();
+  if (itemIds.length > 0) {
+    const snaps = await db
+      .select({
+        itemId: schema.itemMarketSnapshots.itemId,
+        marketId: schema.itemMarketSnapshots.marketId,
+        clearingPriceCopper: schema.itemMarketSnapshots.clearingPriceCopper,
+      })
+      .from(schema.itemMarketSnapshots)
+      .where(
+        and(
+          inArray(schema.itemMarketSnapshots.itemId, itemIds),
+          eq(schema.itemMarketSnapshots.priceStatus, "ACTUAL")
+        )
+      );
+    for (const s of snaps) {
+      const existing = priceByItem.get(s.itemId);
+      // Prefer unified pools (us:0 / eu:0) when available
+      if (!existing || s.marketId.endsWith(":0")) {
+        priceByItem.set(s.itemId, {
+          clearingPriceCopper: s.clearingPriceCopper,
+          marketId: s.marketId,
+        });
+      }
+    }
+  }
+
   return {
-    items: foundItems,
+    items: foundItems.map((i) => {
+      const p = priceByItem.get(i.id);
+      return {
+        ...i,
+        isNewForever: i.id >= 200_000,
+        clearingPriceCopper: p?.clearingPriceCopper ?? null,
+        priceMarketId: p?.marketId ?? null,
+      };
+    }),
     creatures: foundCreatures,
     zones: foundZones,
+  };
+}
+
+export interface BrowseMarketItemsOptions {
+  marketId: string;
+  search?: string;
+  newForeverOnly?: boolean;
+  itemClass?: string;
+  minQuality?: number;
+  sortBy?: "price_desc" | "price_asc" | "change_24h" | "sold_per_day" | "supply";
+  limit?: number;
+  offset?: number;
+}
+
+export async function browseMarketItems(options: BrowseMarketItemsOptions) {
+  const db = getDb();
+  const conditions = [
+    eq(schema.itemMarketSnapshots.marketId, options.marketId),
+    eq(schema.itemMarketSnapshots.priceStatus, "ACTUAL"),
+  ];
+
+  if (options.newForeverOnly) {
+    conditions.push(sql`${schema.items.id} >= 200000`);
+  }
+  if (options.itemClass && options.itemClass.trim()) {
+    conditions.push(eq(schema.items.itemClass, options.itemClass.trim()));
+  }
+  if (options.minQuality !== undefined) {
+    conditions.push(sql`${schema.items.quality} >= ${options.minQuality}`);
+  }
+  if (options.search && options.search.trim()) {
+    const q = options.search.trim();
+    if (/^\d+$/.test(q)) {
+      conditions.push(
+        or(eq(schema.items.id, Number(q)), ilike(schema.items.name, `%${q}%`))!
+      );
+    } else {
+      conditions.push(ilike(schema.items.name, `%${q}%`));
+    }
+  }
+
+  const orderClause = (() => {
+    switch (options.sortBy) {
+      case "price_asc":
+        return asc(schema.itemMarketSnapshots.clearingPriceCopper);
+      case "change_24h":
+        return sql`${schema.itemMarketSnapshots.change24hPct} DESC NULLS LAST`;
+      case "sold_per_day":
+        return sql`${schema.itemSalesEstimates.estimatedSoldPerDay} DESC NULLS LAST`;
+      case "supply":
+        return desc(schema.itemMarketSnapshots.availableQty);
+      case "price_desc":
+      default:
+        return sql`${schema.itemMarketSnapshots.clearingPriceCopper} DESC NULLS LAST`;
+    }
+  })();
+
+  const limit = Math.min(200, Math.max(1, options.limit ?? 50));
+  const offset = Math.max(0, options.offset ?? 0);
+
+  const [countRes, newForeverCountRes, totalInMarketRes, rows] =
+    await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.itemMarketSnapshots)
+        .innerJoin(
+          schema.items,
+          eq(schema.itemMarketSnapshots.itemId, schema.items.id)
+        )
+        .where(and(...conditions)),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.itemMarketSnapshots)
+        .innerJoin(
+          schema.items,
+          eq(schema.itemMarketSnapshots.itemId, schema.items.id)
+        )
+        .where(
+          and(
+            eq(schema.itemMarketSnapshots.marketId, options.marketId),
+            eq(schema.itemMarketSnapshots.priceStatus, "ACTUAL"),
+            sql`${schema.items.id} >= 200000`
+          )
+        ),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.itemMarketSnapshots)
+        .where(
+          and(
+            eq(schema.itemMarketSnapshots.marketId, options.marketId),
+            eq(schema.itemMarketSnapshots.priceStatus, "ACTUAL")
+          )
+        ),
+      db
+        .select({
+          item: schema.items,
+          snapshot: schema.itemMarketSnapshots,
+          sales: schema.itemSalesEstimates,
+        })
+        .from(schema.itemMarketSnapshots)
+        .innerJoin(
+          schema.items,
+          eq(schema.itemMarketSnapshots.itemId, schema.items.id)
+        )
+        .leftJoin(
+          schema.itemSalesEstimates,
+          and(
+            eq(schema.itemSalesEstimates.itemId, schema.items.id),
+            eq(schema.itemSalesEstimates.marketId, options.marketId)
+          )
+        )
+        .where(and(...conditions))
+        .orderBy(orderClause)
+        .limit(limit)
+        .offset(offset),
+    ]);
+
+  return {
+    total: countRes[0]?.count ?? 0,
+    totalActiveInMarket: totalInMarketRes[0]?.count ?? 0,
+    newForeverCountInMarket: newForeverCountRes[0]?.count ?? 0,
+    rows: rows.map((r) => ({
+      itemId: r.item.id,
+      name: r.item.name,
+      quality: r.item.quality,
+      itemClass: r.item.itemClass,
+      itemSubclass: r.item.itemSubclass,
+      iconUrl: r.item.iconUrl,
+      isNewForever: r.item.id >= 200_000,
+      vendorSellCopper: r.item.vendorSellCopper,
+      lowestBuyoutCopper: r.snapshot.lowestBuyoutCopper,
+      medianCopper: r.snapshot.medianCopper,
+      clearingPriceCopper: r.snapshot.clearingPriceCopper,
+      availableQty: r.snapshot.availableQty,
+      listingCount: r.snapshot.listingCount,
+      change24hPct:
+        r.snapshot.change24hPct !== null ? Number(r.snapshot.change24hPct) : null,
+      estimatedSoldPerDay:
+        r.sales?.estimatedSoldPerDay !== null &&
+        r.sales?.estimatedSoldPerDay !== undefined
+          ? Number(r.sales.estimatedSoldPerDay)
+          : null,
+      snapshotAt: r.snapshot.snapshotAt.toISOString(),
+    })),
   };
 }
 

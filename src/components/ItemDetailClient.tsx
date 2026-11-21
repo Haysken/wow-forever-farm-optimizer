@@ -220,13 +220,19 @@ export function ItemDetailClient({
             />
           )}
           <div>
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-amber-300"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to Farm Rankings
-            </Link>
+            <div className="flex items-center gap-3 text-xs text-zinc-400">
+              <Link
+                href="/market"
+                className="inline-flex items-center gap-1 hover:text-amber-300"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Auction House
+              </Link>
+              <span className="text-zinc-700">·</span>
+              <Link href="/" className="hover:text-amber-300">
+                Farm Rankings
+              </Link>
+            </div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <h1 className={`text-2xl font-bold ${rarity.textClass}`}>
                 {item.name}
@@ -234,6 +240,11 @@ export function ItemDetailClient({
               <span className="rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 font-mono text-xs text-zinc-400">
                 Item #{item.id}
               </span>
+              {item.id >= 200_000 && (
+                <span className="rounded border border-violet-500/40 bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-300">
+                  WoW Forever New
+                </span>
+              )}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2.5 text-xs text-zinc-400">
               <span>{rarity.name}</span>
@@ -270,7 +281,7 @@ export function ItemDetailClient({
             onChange={(e) => {
               const nextRegion = e.target.value;
               setRegion(nextRegion);
-              setMarketId(`${nextRegion}:110`);
+              setMarketId(`${nextRegion}:0`);
             }}
             className="rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
           >
