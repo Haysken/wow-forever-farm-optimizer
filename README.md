@@ -69,11 +69,13 @@ cp .env.example .env.local
 npm run db:migrate
 
 # 4. Ingest live WoW Forever data & optimize search indexes
-npm run sync:catalog   # Zones, items (22.8k), creatures (9.9k) from EverlookDB
-npm run sync:loot      # Observed WoW Forever drops from Everloot (+ optional EverlookDB NPCs)
-npm run sync:markets   # Alliance, Horde, and Blackwater AH snapshots from Forever AH
-npm run db:optimize    # Applies pg_trgm GIN indexes + composite snapshot indexes + ANALYZE
-npm run sync:all       # Combined scheduled sync orchestrator (see scripts/github-actions-scheduled-sync.yml)
+npm run sync:catalog          # Zones, items (22.8k), creatures (9.9k) from EverlookDB
+npm run sync:loot             # Observed WoW Forever drops from Everloot (+ optional EverlookDB NPCs)
+npm run sync:markets          # Alliance, Horde, Blackwater, and Unified AH snapshots from Forever AH
+npm run sync:markets:unified  # Full regional snapshot (all active items including new 250xxx items in US/EU)
+npm run db:optimize           # Applies pg_trgm GIN indexes + composite snapshot indexes + ANALYZE
+npm run sync:all              # Combined scheduled sync orchestrator (see scripts/github-actions-scheduled-sync.yml)
+npm run watch:addon           # Optional: auto-import SavedVariables/WoWForeverFarmOptimizer.lua on /reload
 
 # 5. Run checks & development server
 npm run typecheck

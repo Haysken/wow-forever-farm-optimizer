@@ -15,6 +15,7 @@ export type CatalogProviderId = "everlookdb" | "wclbox";
 export type LootProviderId =
   | "everloot"
   | "everlookdb_players"
+  | "addon_import"
   | "user_observation"
   | "classic_db";
 

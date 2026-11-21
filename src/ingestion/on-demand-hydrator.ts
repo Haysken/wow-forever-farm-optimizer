@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { resolveCreatureLoot } from "@/ingestion/loot-resolver";
 import { TtlCache } from "@/lib/cache";
+import { parseSavedVariablesLua } from "@/ingestion/savedvariables-parser";
 import { EverlookDBLootAdapter } from "@/providers/everlookdb-loot";
 import { ForeverAHMarketAdapter } from "@/providers/forever-ah-market";
 import type {
@@ -548,4 +549,133 @@ export async function recordUserDropObservation(params: {
   await ensureItemHydrated(params.itemId, region, params.marketId ?? "us:110");
 
   return { resolvedCount, dropRate };
+}
+
+export interface AddonImportSummary {
+  clientBuild: string | null;
+  region: string | null;
+  creaturesParsed: number;
+  observationsSaved: number;
+  spawnsSaved: number;
+  itemsHydrated: number;
+  creatures: Array<{
+    npcId: number;
+    name: string;
+    kills: number;
+    measuredKillsPerHour: number | null;
+    dropsRecorded: number;
+  }>;
+}
+
+/**
+ * Imports a WoW Forever Farm Optimizer `SavedVariables/WoWForeverFarmOptimizer.lua`
+ * file into PostgreSQL as `OBSERVED` (`source = "addon_import"`), updates spawns and
+ * raw coin averages, and hydrates live AH prices across all regional houses for newly
+ * observed items (including brand-new Forever 250xxx items).
+ */
+export async function importSavedVariablesToDb(
+  luaContent: string,
+  preferredMarketId = "us:0"
+): Promise<AddonImportSummary> {
+  const parsed = parseSavedVariablesLua(luaContent);
+  const db = getDb();
+
+  const observations: NormalizedDropObservation[] = [];
+  let spawnsSaved = 0;
+  const importedItemIds = new Set<number>();
+
+  for (const c of parsed.creatures) {
+    if (c.rawCoinCopper > 0 && c.lootedCorpses > 0) {
+      const avgCoin = Math.round(c.rawCoinCopper / c.lootedCorpses);
+      await db
+        .update(schema.creatures)
+        .set({
+          rawCoinMinCopper: avgCoin,
+          rawCoinMaxCopper: avgCoin,
+          rawCoinSource: "addon_import",
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.creatures.id, c.npcId));
+    }
+
+    if (c.spawns.length > 0) {
+      const [exists] = await db
+        .select({ id: schema.creatures.id })
+        .from(schema.creatures)
+        .where(eq(schema.creatures.id, c.npcId))
+        .limit(1);
+      if (exists) {
+        await db.insert(schema.creatureSpawns).values(
+          c.spawns.slice(0, 20).map((s) => ({
+            creatureId: c.npcId,
+            zoneId: null,
+            zoneName: null,
+            subzone: null,
+            x: s.x.toFixed(2),
+            y: s.y.toFixed(2),
+            source: "addon_import",
+            confidenceTier: "OBSERVED" as const,
+            sampleSize: c.kills,
+          }))
+        );
+        spawnsSaved += Math.min(20, c.spawns.length);
+      }
+    }
+
+    for (const drop of c.items) {
+      importedItemIds.add(drop.itemId);
+      observations.push({
+        creatureId: c.npcId,
+        itemId: drop.itemId,
+        lootMethod: "kill",
+        source: "addon_import",
+        killsObserved: c.kills,
+        dropsObserved: drop.drops,
+        totalQtyObserved: drop.totalQty,
+        minQty: drop.minQty,
+        maxQty: drop.maxQty,
+        avgQty: drop.totalQty / drop.drops,
+        dropRate: drop.drops / c.kills,
+        ciLow: null,
+        ciHigh: null,
+        reporterCount: 1,
+        confidenceTier: "OBSERVED",
+        isQuestOnly: false,
+        clientBuild: parsed.clientBuild,
+        observedAt: parsed.updatedAt,
+      });
+    }
+  }
+
+  const observationsSaved = await persistAndResolveObservations(observations);
+  creatureHydrationGuard.clear();
+  itemHydrationGuard.clear();
+
+  const region =
+    parsed.region && ["us", "eu", "kr", "tw"].includes(parsed.region.toLowerCase())
+      ? parsed.region.toLowerCase()
+      : preferredMarketId.split(":")[0] || "us";
+
+  // Hydrate live AH prices for up to 25 newly observed items in parallel-safe sequence
+  let itemsHydrated = 0;
+  for (const itemId of Array.from(importedItemIds).slice(0, 25)) {
+    await ensureItemHydrated(itemId, region, preferredMarketId);
+    itemsHydrated++;
+  }
+
+  return {
+    clientBuild: parsed.clientBuild,
+    region: parsed.region,
+    creaturesParsed: parsed.creatures.length,
+    observationsSaved,
+    spawnsSaved,
+    itemsHydrated,
+    creatures: parsed.creatures.map((c) => ({
+      npcId: c.npcId,
+      name: c.name,
+      kills: c.kills,
+      measuredKillsPerHour: c.measuredKillsPerHour,
+      dropsRecorded: c.items.length,
+    })),
+  };
 }

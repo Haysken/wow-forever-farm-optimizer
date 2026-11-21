@@ -67,8 +67,9 @@ export async function runMarketSync(options: SyncMarketsOptions = {}): Promise<{
       : null;
 
     const allMarkets = await provider.fetchMarkets(regions);
+    const includeUnified = options.includeUnified ?? true;
     const selectedMarkets = allMarkets
-      .filter((m) => options.includeUnified || m.faction !== "unified")
+      .filter((m) => includeUnified || m.faction !== "unified")
       .filter((m) => !houseFilter || houseFilter.has(m.houseId))
       .slice(0, options.maxHouses ?? allMarkets.length);
 
