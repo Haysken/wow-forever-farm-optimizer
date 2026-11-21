@@ -12,7 +12,11 @@ export type MarketProviderId = "forever_ah" | "blizzard_api" | "ahledger";
 
 export type CatalogProviderId = "everlookdb" | "wclbox";
 
-export type LootProviderId = "everloot" | "everlookdb_players" | "classic_db";
+export type LootProviderId =
+  | "everloot"
+  | "everlookdb_players"
+  | "user_observation"
+  | "classic_db";
 
 export interface NormalizedZone {
   id: number;

@@ -146,6 +146,72 @@ export function CreatureDetailClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // User-submitted WoW Forever drop observation state
+  const [showObsForm, setShowObsForm] = useState(false);
+  const [obsItemQuery, setObsItemQuery] = useState("");
+  const [obsSearchHits, setObsSearchHits] = useState<
+    Array<{ id: number; name: string; quality: number }>
+  >([]);
+  const [obsItemId, setObsItemId] = useState<number | null>(null);
+  const [obsKills, setObsKills] = useState<number>(100);
+  const [obsDrops, setObsDrops] = useState<number>(1);
+  const [obsSubmitting, setObsSubmitting] = useState(false);
+  const [obsFeedback, setObsFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = obsItemQuery.trim();
+    if (q.length < 2) {
+      setObsSearchHits([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/v1/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const json = await res.json();
+          setObsSearchHits((json.items ?? []).slice(0, 6));
+        }
+      } catch {
+        // ignore
+      }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [obsItemQuery]);
+
+  const submitObservation = async () => {
+    if (!obsItemId) return;
+    setObsSubmitting(true);
+    setObsFeedback(null);
+    try {
+      const res = await fetch("/api/v1/observations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creatureId,
+          itemId: obsItemId,
+          killsObserved: obsKills,
+          dropsObserved: obsDrops,
+          marketId,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to save observation");
+      setObsFeedback(
+        `Saved as OBSERVED (${obsDrops}/${obsKills} = ${(json.dropRate * 100).toFixed(2)}%). Recalculating EGPH...`
+      );
+      setObsItemId(null);
+      setObsItemQuery("");
+      setObsSearchHits([]);
+      await load();
+    } catch (err) {
+      setObsFeedback(
+        err instanceof Error ? err.message : "Failed to save observation"
+      );
+    } finally {
+      setObsSubmitting(false);
+    }
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -503,16 +569,125 @@ export function CreatureDetailClient({
 
       {/* Complete Loot Table */}
       <section className="overflow-hidden rounded-xl border border-zinc-800 bg-[#12161f]">
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
-            <Coins className="h-4 w-4 text-amber-400" />
-            Complete Loot Table ({profitability.items.length} drops)
-          </h2>
-          <span className="text-[11px] text-zinc-500">
-            All drops contribute to EGPH · Quest items valued at 0c · BoP/Gray
-            routed to Vendor
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
+              <Coins className="h-4 w-4 text-amber-400" />
+              Complete Loot Table ({profitability.items.length} drops)
+            </h2>
+            <span className="text-[11px] text-zinc-500">
+              All drops contribute to EGPH · Quest items valued at 0c · BoP/Gray
+              routed to Vendor
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowObsForm((v) => !v)}
+            className="rounded border border-sky-500/40 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/25"
+          >
+            {showObsForm ? "Close" : "+ Record Observed Forever Drop"}
+          </button>
         </div>
+
+        {showObsForm && (
+          <div className="border-b border-zinc-800 bg-[#0d1017] p-4 text-xs space-y-3">
+            <p className="text-zinc-400">
+              Looted a brand-new WoW Forever item not yet in Everloot/EverlookDB?
+              Record your observed sample size below. Saved transparently as{" "}
+              <strong className="text-sky-300">OBSERVED (user_observation)</strong>{" "}
+              — never presented as Verified or Classic data.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="sm:col-span-2 relative">
+                <label className="mb-1 block text-[11px] text-zinc-400">
+                  Search Item Name or ID
+                </label>
+                <input
+                  type="text"
+                  value={obsItemQuery}
+                  onChange={(e) => {
+                    setObsItemQuery(e.target.value);
+                    setObsItemId(null);
+                  }}
+                  placeholder="e.g. Recipe: Elixir of Strength or 250385"
+                  className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
+                />
+                {obsSearchHits.length > 0 && !obsItemId && (
+                  <div className="absolute z-20 mt-1 w-full rounded border border-zinc-700 bg-[#12161f] p-1 shadow-xl">
+                    {obsSearchHits.map((it) => {
+                      const r = getRarityMeta(it.quality);
+                      return (
+                        <button
+                          key={it.id}
+                          type="button"
+                          onClick={() => {
+                            setObsItemId(it.id);
+                            setObsItemQuery(`${it.name} (#${it.id})`);
+                            setObsSearchHits([]);
+                          }}
+                          className="flex w-full justify-between rounded px-2 py-1 text-left hover:bg-zinc-800"
+                        >
+                          <span className={r.textClass}>{it.name}</span>
+                          <span className="font-mono text-[10px] text-zinc-500">
+                            #{it.id}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] text-zinc-400">
+                  Drops Observed
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={obsDrops}
+                  onChange={(e) =>
+                    setObsDrops(Math.max(1, Number(e.target.value) || 1))
+                  }
+                  className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] text-zinc-400">
+                  Total Kills Sampled
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={obsKills}
+                  onChange={(e) =>
+                    setObsKills(Math.max(obsDrops, Number(e.target.value) || 1))
+                  }
+                  className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] text-zinc-400">
+                Sample rate:{" "}
+                <strong className="font-mono text-amber-300">
+                  {((obsDrops / Math.max(1, obsKills)) * 100).toFixed(2)}%
+                </strong>{" "}
+                ({obsDrops}/{obsKills})
+              </span>
+              <button
+                type="button"
+                disabled={!obsItemId || obsSubmitting}
+                onClick={submitObservation}
+                className="rounded border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 font-semibold text-amber-100 hover:bg-amber-500/30 disabled:opacity-40"
+              >
+                {obsSubmitting ? "Saving..." : "Save Observed Drop"}
+              </button>
+            </div>
+            {obsFeedback && (
+              <p className="text-xs text-emerald-300">{obsFeedback}</p>
+            )}
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left text-xs">
