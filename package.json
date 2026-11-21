@@ -16,9 +16,11 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:optimize": "tsx src/workers/optimize-db.ts",
     "sync:catalog": "tsx src/workers/sync-catalog.ts",
     "sync:loot": "tsx src/workers/sync-loot.ts",
-    "sync:markets": "tsx src/workers/sync-markets.ts"
+    "sync:markets": "tsx src/workers/sync-markets.ts",
+    "sync:all": "tsx src/workers/sync-all.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

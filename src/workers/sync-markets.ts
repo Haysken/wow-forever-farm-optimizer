@@ -1,3 +1,4 @@
+import { truncateError } from "@/lib/cache";
 import { loadLocalEnv } from "@/lib/env";
 import { eq, sql } from "drizzle-orm";
 
@@ -236,7 +237,7 @@ export async function runMarketSync(options: SyncMarketsOptions = {}): Promise<{
         .update(schema.syncRuns)
         .set({
           status: "failed",
-          errorSummary: error instanceof Error ? error.message : String(error),
+          errorSummary: truncateError(error, 500),
           finishedAt: new Date(),
         })
         .where(eq(schema.syncRuns.id, runId));
