@@ -24,9 +24,21 @@ interface HydratedWatchItem extends SavedWatchItem {
 }
 
 export function WatchlistClient() {
-  const [marketId, setMarketId] = useState("us:110");
+  const [marketId, setMarketId] = useState("us:0");
+  const [markets, setMarkets] = useState<Array<{ id: string; displayName: string }>>([]);
   const [items, setItems] = useState<HydratedWatchItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/v1/markets")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.markets) && d.markets.length > 0) {
+          setMarkets(d.markets);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let saved: SavedWatchItem[] = [];
@@ -120,12 +132,15 @@ export function WatchlistClient() {
           onChange={(e) => setMarketId(e.target.value)}
           className="rounded border border-zinc-700 bg-[#0d1016] px-3 py-1.5 text-xs text-zinc-100"
         >
-          <option value="us:110">US House #110 (Alliance)</option>
-          <option value="us:113">US House #113 (Horde)</option>
-          <option value="us:116">US House #116 (Blackwater)</option>
-          <option value="eu:110">EU House #110 (Alliance)</option>
-          <option value="eu:113">EU House #113 (Horde)</option>
-          <option value="eu:116">EU House #116 (Blackwater)</option>
+          {markets.length === 0 ? (
+            <option value={marketId}>{marketId}</option>
+          ) : (
+            markets.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.displayName}
+              </option>
+            ))
+          )}
         </select>
       </header>
 

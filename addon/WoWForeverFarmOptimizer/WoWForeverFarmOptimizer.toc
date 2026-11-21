@@ -1,0 +1,8 @@
+## Interface: 16001, 11509, 11507
+## Title: WoW Forever Farm Optimizer
+## Notes: Passively records creature kills, loot drops (including new Forever 250xxx items), quantities, spawns, and kills/hour for WoW Forever Farm Optimizer.
+## Author: WoW Forever Farm Optimizer Community
+## Version: 0.1.0
+## SavedVariables: WoWForeverFarmOptimizerDB
+
+Core.lua

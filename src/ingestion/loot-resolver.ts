@@ -32,8 +32,9 @@ const CONFIDENCE_RANK: Record<ConfidenceTier, number> = {
 };
 
 const SOURCE_RANK: Record<LootProviderId, number> = {
-  everloot: 4,
-  everlookdb_players: 3,
+  everloot: 5,
+  everlookdb_players: 4,
+  addon_import: 3,
   user_observation: 2,
   classic_db: 1,
 };

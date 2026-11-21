@@ -311,6 +311,7 @@ export function DashboardClient() {
                 onChange={(e) => setFaction(e.target.value as MarketFaction)}
                 className="w-full rounded border border-zinc-700 bg-[#0d1016] px-2 py-1.5 text-xs text-zinc-100"
               >
+                <option value="unified">All Regional Houses (5%)</option>
                 <option value="alliance">Alliance (5%)</option>
                 <option value="horde">Horde (5%)</option>
                 <option value="neutral">Blackwater Neutral (15%)</option>
@@ -330,7 +331,7 @@ export function DashboardClient() {
                 ) : (
                   filteredMarkets.map((m) => (
                     <option key={m.id} value={m.id}>
-                      House #{m.houseId}
+                      {m.houseId === 0 ? "All Houses (Unified)" : `House #${m.houseId}`}
                     </option>
                   ))
                 )}

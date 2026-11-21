@@ -10,6 +10,7 @@ import {
   Dice5,
   Search,
   TrendingUp,
+  Upload,
 } from "lucide-react";
 import { getRarityMeta } from "@/lib/wow-ui";
 
@@ -41,6 +42,7 @@ const NAV_ITEMS = [
   { href: "/simulator", label: "Simulator", icon: Dice5 },
   { href: "/watchlist", label: "Watchlist", icon: Bookmark },
   { href: "/opportunities", label: "Opportunities", icon: TrendingUp },
+  { href: "/import", label: "Import Addon", icon: Upload },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
