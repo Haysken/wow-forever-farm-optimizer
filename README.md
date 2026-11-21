@@ -44,8 +44,8 @@ A data-driven economic analysis web application for **World of Warcraft: Forever
 ## Development Status
 
 - [x] **Phase 1:** Technical feasibility assessment & architecture documentation
-- [x] **Phase 2:** Data foundation (PostgreSQL/Drizzle schema + migrations, provider adapters, loot resolver, ingestion workers, unit & live smoke tests) *(ready for live DB migration once `DATABASE_URL` is configured in `.env.local`)*
-- [ ] **Phase 3:** Core profitability engine & mathematical test suite
+- [x] **Phase 2:** Data foundation (PostgreSQL/Drizzle schema + migrations, provider adapters, loot resolver, ingestion workers, unit & live smoke tests)
+- [x] **Phase 3:** Core profitability engine (EGPH, EGPK, K50/K90, liquidity & `Si` model, vendor/BoP/coin routing, Monte Carlo farming simulator, PostgreSQL ranking service, full mathematical test suite)
 - [ ] **Phase 4:** Web application (Dashboard, Creature/Item pages, Charts, Simulator, Watchlist)
 - [ ] **Phase 5:** Optimization, scheduled sync, monitoring & production hardening
 

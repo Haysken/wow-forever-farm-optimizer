@@ -1,5 +1,7 @@
-import "dotenv/config";
+import { loadLocalEnv } from "@/lib/env";
 import { eq, sql } from "drizzle-orm";
+
+loadLocalEnv();
 import { closeDb, getDb, schema } from "@/db";
 import { deduplicateById } from "@/ingestion/validators";
 import { EverlookDBCatalogAdapter } from "@/providers/everlookdb-catalog";

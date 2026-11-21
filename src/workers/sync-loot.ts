@@ -1,5 +1,7 @@
-import "dotenv/config";
+import { loadLocalEnv } from "@/lib/env";
 import { eq, sql } from "drizzle-orm";
+
+loadLocalEnv();
 import { closeDb, getDb, schema } from "@/db";
 import { resolveCreatureLoot } from "@/ingestion/loot-resolver";
 import { validateDropObservations } from "@/ingestion/validators";
