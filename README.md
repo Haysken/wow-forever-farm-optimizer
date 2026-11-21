@@ -44,10 +44,38 @@ A data-driven economic analysis web application for **World of Warcraft: Forever
 ## Development Status
 
 - [x] **Phase 1:** Technical feasibility assessment & architecture documentation
-- [ ] **Phase 2:** Data foundation (PostgreSQL schema, provider adapters, ingestion workers)
+- [x] **Phase 2:** Data foundation (PostgreSQL/Drizzle schema + migrations, provider adapters, loot resolver, ingestion workers, unit & live smoke tests) *(ready for live DB migration once `DATABASE_URL` is configured in `.env.local`)*
 - [ ] **Phase 3:** Core profitability engine & mathematical test suite
 - [ ] **Phase 4:** Web application (Dashboard, Creature/Item pages, Charts, Simulator, Watchlist)
 - [ ] **Phase 5:** Optimization, scheduled sync, monitoring & production hardening
+
+---
+
+## Local Setup & Data Sync Commands
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure local environment (never commit .env.local)
+cp .env.example .env.local
+# Edit .env.local and set DATABASE_URL (e.g., Neon/Supabase PostgreSQL)
+# Optional: set EVERLOOKDB_API_KEY, BLIZZARD_CLIENT_ID, BLIZZARD_CLIENT_SECRET
+
+# 3. Apply PostgreSQL migrations
+npm run db:migrate
+
+# 4. Ingest live WoW Forever data
+npm run sync:catalog   # Zones, items (22.8k), creatures (9.9k) from EverlookDB
+npm run sync:loot      # Observed WoW Forever drops from Everloot (+ optional EverlookDB NPCs)
+npm run sync:markets   # Alliance, Horde, and Blackwater AH snapshots from Forever AH
+
+# 5. Run checks & development server
+npm run typecheck
+npm run lint
+npm test
+npm run dev
+```
 
 ---
 
