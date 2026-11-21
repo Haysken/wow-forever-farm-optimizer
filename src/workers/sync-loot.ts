@@ -69,6 +69,25 @@ export async function runLootSync(options: SyncLootOptions = {}): Promise<{
           })
           .where(eq(schema.creatures.id, npcId));
       }
+
+      if (bundle.spawns.length > 0) {
+        await db
+          .delete(schema.creatureSpawns)
+          .where(eq(schema.creatureSpawns.creatureId, npcId));
+        await db.insert(schema.creatureSpawns).values(
+          bundle.spawns.slice(0, 30).map((s) => ({
+            creatureId: s.creatureId,
+            zoneId: null,
+            zoneName: s.zoneName,
+            subzone: s.subzone,
+            x: s.x.toFixed(2),
+            y: s.y.toFixed(2),
+            source: s.source,
+            confidenceTier: s.confidenceTier,
+            sampleSize: s.sampleSize,
+          }))
+        );
+      }
     }
 
     const { valid, rejected } = validateDropObservations(

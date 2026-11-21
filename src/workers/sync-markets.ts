@@ -15,6 +15,12 @@ export interface SyncMarketsOptions {
   provider?: MarketDataProvider;
 }
 
+function clampPct(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value)) return null;
+  const clamped = Math.min(99_999.999, Math.max(-9_999.999, value));
+  return clamped.toFixed(3);
+}
+
 export async function runMarketSync(options: SyncMarketsOptions = {}): Promise<{
   provider: string;
   marketsSynced: number;
@@ -51,9 +57,18 @@ export async function runMarketSync(options: SyncMarketsOptions = {}): Promise<{
     const itemRows = await db.select({ id: schema.items.id }).from(schema.items);
     const knownItemIds = new Set(itemRows.map((r) => r.id));
 
+    const houseFilter = process.env.SYNC_HOUSE_IDS
+      ? new Set(
+          process.env.SYNC_HOUSE_IDS.split(",")
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isInteger(n))
+        )
+      : null;
+
     const allMarkets = await provider.fetchMarkets(regions);
     const selectedMarkets = allMarkets
       .filter((m) => options.includeUnified || m.faction !== "unified")
+      .filter((m) => !houseFilter || houseFilter.has(m.houseId))
       .slice(0, options.maxHouses ?? allMarkets.length);
 
     for (const m of selectedMarkets) {
@@ -89,16 +104,31 @@ export async function runMarketSync(options: SyncMarketsOptions = {}): Promise<{
     let totalUpserted = 0;
     let totalRejected = 0;
 
+    // Optional fast mode: sync only items that drop from known creatures when SYNC_LOOT_ITEMS_ONLY=1
+    let targetItemIds: number[] | undefined;
+    if (process.env.SYNC_LOOT_ITEMS_ONLY === "1") {
+      const lootItems = await db
+        .selectDistinct({ itemId: schema.creatureLootResolved.itemId })
+        .from(schema.creatureLootResolved);
+      targetItemIds = lootItems.map((r) => r.itemId);
+    }
+
     for (const market of selectedMarkets) {
-      const rawRows = await provider.fetchMarketSnapshot(market);
+      const rawRows = await provider.fetchMarketSnapshot(market, {
+        itemIds: targetItemIds,
+      });
       const { valid, rejected } = validateMarketRows(
         rawRows,
         knownItemIds.size > 0 ? knownItemIds : undefined
       );
       totalRejected += rejected.length;
 
-      for (let i = 0; i < valid.length; i += 250) {
-        const chunk = valid.slice(i, i + 250);
+      const dedupedValid = Array.from(
+        new Map(valid.map((r) => [r.itemId, r])).values()
+      );
+
+      for (let i = 0; i < dedupedValid.length; i += 250) {
+        const chunk = dedupedValid.slice(i, i + 250);
         await db
           .insert(schema.itemMarketSnapshots)
           .values(
@@ -114,12 +144,9 @@ export async function runMarketSync(options: SyncMarketsOptions = {}): Promise<{
               clearingPriceCopper: r.clearingPriceCopper,
               availableQty: r.availableQty,
               listingCount: r.listingCount,
-              change24hPct:
-                r.change24hPct !== null ? r.change24hPct.toFixed(3) : null,
-              trend7dPct:
-                r.trend7dPct !== null ? r.trend7dPct.toFixed(3) : null,
-              trend30dPct:
-                r.trend30dPct !== null ? r.trend30dPct.toFixed(3) : null,
+              change24hPct: clampPct(r.change24hPct),
+              trend7dPct: clampPct(r.trend7dPct),
+              trend30dPct: clampPct(r.trend30dPct),
               priceStatus: r.priceStatus,
               source: r.source,
               snapshotAt: r.snapshotAt,
