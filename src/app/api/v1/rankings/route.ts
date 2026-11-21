@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { hasDatabaseUrl } from "@/db";
 import { computeFarmRankings } from "@/db/profitability-service";
+import { TtlCache } from "@/lib/cache";
 import type { ConfidenceTier } from "@/providers/types";
 
 export const dynamic = "force-dynamic";
+
+const rankingsCache = new TtlCache<Awaited<ReturnType<typeof computeFarmRankings>>>(
+  60_000,
+  150
+);
 
 const querySchema = z.object({
   marketId: z.string().min(2).default("us:110"),
@@ -70,6 +76,17 @@ export async function GET(request: NextRequest) {
     : undefined;
 
   try {
+    const cacheKey = request.nextUrl.searchParams.toString();
+    const cached = rankingsCache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+          "X-Cache": "HIT",
+        },
+      });
+    }
+
     const data = await computeFarmRankings({
       marketId: p.marketId,
       killsPerHour: p.killsPerHour,
@@ -90,7 +107,13 @@ export async function GET(request: NextRequest) {
       limit: p.limit,
       offset: p.offset,
     });
-    return NextResponse.json(data);
+    rankingsCache.set(cacheKey, data);
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+        "X-Cache": "MISS",
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ranking query failed" },

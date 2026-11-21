@@ -47,7 +47,7 @@ A data-driven economic analysis web application for **World of Warcraft: Forever
 - [x] **Phase 2:** Data foundation (PostgreSQL/Drizzle schema + migrations, provider adapters, loot resolver, ingestion workers, unit & live smoke tests)
 - [x] **Phase 3:** Core profitability engine (EGPH, EGPK, K50/K90, liquidity & `Si` model, vendor/BoP/coin routing, Monte Carlo farming simulator, PostgreSQL ranking service, full mathematical test suite)
 - [x] **Phase 4:** Web application (Farm Ranking Dashboard, Creature Detail Verdict pages, Item Detail Cross-Faction pages, Recharts 24h/7d/30d history, Farming Simulator, Watchlist, Market Opportunities)
-- [ ] **Phase 5:** Optimization, scheduled sync, monitoring & production hardening
+- [x] **Phase 5:** Optimization, scheduled sync, PostgreSQL `pg_trgm` indexing, TTL caching, staleness monitoring & end-to-end live verification
 
 ---
 
@@ -68,10 +68,12 @@ cp .env.example .env.local
 # 3. Apply PostgreSQL migrations
 npm run db:migrate
 
-# 4. Ingest live WoW Forever data
+# 4. Ingest live WoW Forever data & optimize search indexes
 npm run sync:catalog   # Zones, items (22.8k), creatures (9.9k) from EverlookDB
 npm run sync:loot      # Observed WoW Forever drops from Everloot (+ optional EverlookDB NPCs)
 npm run sync:markets   # Alliance, Horde, and Blackwater AH snapshots from Forever AH
+npm run db:optimize    # Applies pg_trgm GIN indexes + composite snapshot indexes + ANALYZE
+npm run sync:all       # Combined scheduled sync orchestrator (see scripts/github-actions-scheduled-sync.yml)
 
 # 5. Run checks & development server
 npm run typecheck

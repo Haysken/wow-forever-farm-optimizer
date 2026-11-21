@@ -1,0 +1,40 @@
+name: Scheduled Market & Loot Sync
+
+on:
+  schedule:
+    # Run hourly at :15 UTC (aligned with Blizzard / Forever AH hourly snapshots)
+    - cron: "15 * * * *"
+  workflow_dispatch:
+    inputs:
+      include_catalog:
+        description: "Also refresh WoW Forever catalog (EverlookDB)"
+        type: boolean
+        default: false
+      include_loot:
+        description: "Also refresh observed drop tables (Everloot)"
+        type: boolean
+        default: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.DATABASE_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Run scheduled sync
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          EVERLOOKDB_API_KEY: ${{ secrets.EVERLOOKDB_API_KEY }}
+          BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
+          BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}
+          SYNC_REGIONS: "us,eu"
+          SYNC_HOUSE_IDS: "110,113,116"
+          SYNC_LOOT_ITEMS_ONLY: "1"
+          SYNC_INCLUDE_CATALOG: ${{ inputs.include_catalog == true && '1' || '0' }}
+          SYNC_INCLUDE_LOOT: ${{ inputs.include_loot == true && '1' || (github.event.schedule == '15 * * * *' && '0' || '1') }}
+        run: npm run sync:all
