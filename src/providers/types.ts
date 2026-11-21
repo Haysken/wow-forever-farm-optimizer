@@ -123,6 +123,15 @@ export interface NormalizedMarket {
 export interface NormalizedItemMarketRow {
   marketId: string;
   itemId: number;
+  itemMeta?: {
+    name: string;
+    quality: string | null;
+    itemClass: string | null;
+    itemSubclass: string | null;
+    itemLevel: number | null;
+    requiredLevel: number | null;
+    vendorSellCopper: number;
+  };
   lowestBuyoutCopper: number | null;
   p10Copper: number | null;
   medianCopper: number | null;

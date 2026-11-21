@@ -6,12 +6,12 @@ A data-driven economic analysis web application for **World of Warcraft: Forever
 
 ---
 
-## Key Capabilities (Planned)
+## Key Capabilities
 
 - **Multi-Source Creature & Loot Database:** Combines WoW Forever client data (`1.60.1.x`), player-observed drop rates with sample sizes & 95% confidence intervals (Everloot / EverlookDB), and clearly badged Classic 1.12 fallbacks (`ESTIMATED`).
-- **Independent Faction Auction House Markets:** Tracks Alliance, Horde, and Neutral (Blackwater) Auction Houses across US/EU rulesets with configurable AH commissions (default 5% faction, 15% neutral).
+- **Full WoW Forever Auction House & New Items Explorer (`/market`):** Syncs every active item across US/EU Unified pools (`us:0`, `eu:0`) and individual Alliance, Horde, and Neutral (Blackwater) houses — including 1,200+ brand-new WoW Forever items (`ID >= 200,000`) with live prices, 24h deltas, supply, and estimated daily sales.
 - **Expected Gold per Hour (EGPH) Engine:** Evaluates *all* relevant creature drops (AH-sellable items, vendor floor / BoP liquidation, raw coin drops), market liquidity, selling probability, farming speed, and hourly expenses — separating statistical expected value from simulated runs.
-- **Interactive Economic Tools:** Farm Ranking Dashboard, Creature Detail Verdict Pages, Item Source Comparison Pages, 24h/7d/30d Price & Profitability Charts, Farming Simulator, Watchlist, and Opportunity Alerts.
+- **Interactive Economic Tools:** Farm Ranking Dashboard, Auction House & New Items Explorer (`/market`), Creature Detail Verdict Pages, Item Source Comparison Pages, 24h/7d/30d Price & Profitability Charts, Farming Simulator, Watchlist, and Opportunity Alerts.
 - **Strict Data Provenance:** Every number is explicitly tagged (`VERIFIED`, `OBSERVED`, `ESTIMATED`, or `UNKNOWN`) with source attribution and freshness timestamps. Never fabricates prices, history, or drop rates.
 
 ---

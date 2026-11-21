@@ -18,7 +18,7 @@ export default async function ItemDetailPage({
   return (
     <ItemDetailClient
       itemId={itemId}
-      initialMarketId={sp.marketId ?? "us:110"}
+      initialMarketId={sp.marketId ?? "us:0"}
     />
   );
 }

@@ -442,12 +442,17 @@ export async function ensureItemHydrated(
     await upsertMarkets(markets);
     await upsertMarketRows(rows);
 
-    // Enrich selected house with market_value and sold_per_day stats
-    const targetMarket =
-      markets.find((m) => m.id === selectedMarketId) ??
-      markets.find((m) => m.faction === "alliance") ??
-      markets[0];
-    if (targetMarket) {
+    // Enrich selected house AND first active house with market_value and sold_per_day stats
+    const activeMarketIds = new Set(rows.map((r) => r.marketId));
+    const statsTargets = [
+      markets.find((m) => m.id === selectedMarketId && activeMarketIds.has(m.id)),
+      markets.find((m) => m.faction === "unified" && activeMarketIds.has(m.id)),
+      markets.find((m) => m.faction !== "unified" && activeMarketIds.has(m.id)),
+    ].filter((m, idx, arr): m is NormalizedMarket =>
+      Boolean(m) && arr.findIndex((x) => x?.id === m?.id) === idx
+    );
+
+    for (const targetMarket of statsTargets.slice(0, 2)) {
       const stats = await ah.fetchItemStats(targetMarket.providerKey, itemId);
       if (stats) {
         await db

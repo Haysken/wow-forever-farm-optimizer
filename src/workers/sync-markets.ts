@@ -16,6 +16,17 @@ export interface SyncMarketsOptions {
   provider?: MarketDataProvider;
 }
 
+const QUALITY_TO_CODE: Record<string, number> = {
+  POOR: 0,
+  COMMON: 1,
+  UNCOMMON: 2,
+  RARE: 3,
+  EPIC: 4,
+  LEGENDARY: 5,
+  ARTIFACT: 6,
+  HEIRLOOM: 7,
+};
+
 function clampPct(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) return null;
   const clamped = Math.min(99_999.999, Math.max(-9_999.999, value));
@@ -119,6 +130,53 @@ export async function runMarketSync(options: SyncMarketsOptions = {}): Promise<{
       const rawRows = await provider.fetchMarketSnapshot(market, {
         itemIds: targetItemIds,
       });
+
+      // Auto-register any brand-new WoW Forever item present on the live AH that is not yet in catalog
+      const missingCatalogItems = rawRows.filter(
+        (r) => !knownItemIds.has(r.itemId) && r.itemMeta?.name
+      );
+      if (missingCatalogItems.length > 0) {
+        const uniqueNew = Array.from(
+          new Map(missingCatalogItems.map((r) => [r.itemId, r])).values()
+        );
+        for (let i = 0; i < uniqueNew.length; i += 200) {
+          const chunk = uniqueNew.slice(i, i + 200);
+          await db
+            .insert(schema.items)
+            .values(
+              chunk.map((r) => {
+                const qName = (r.itemMeta?.quality ?? "COMMON").toUpperCase();
+                return {
+                  id: r.itemId,
+                  name: r.itemMeta!.name,
+                  quality: QUALITY_TO_CODE[qName] ?? 1,
+                  qualityName: qName,
+                  itemClass: r.itemMeta?.itemClass ?? null,
+                  itemSubclass: r.itemMeta?.itemSubclass ?? null,
+                  itemLevel: r.itemMeta?.itemLevel ?? null,
+                  requiredLevel: r.itemMeta?.requiredLevel ?? null,
+                  bindType: "none" as const,
+                  vendorSellCopper: r.itemMeta?.vendorSellCopper ?? 0,
+                  vendorBuyCopper: 0,
+                  maxStack: 1,
+                  isCommodity: r.itemMeta?.itemClass === "Trade Goods" || r.itemMeta?.itemClass === "Consumable",
+                  iconId: null,
+                  iconUrl: `https://forever-ah.com/v1/items/${r.itemId}/icon`,
+                  description: null,
+                  foreverStatus: r.itemId >= 200_000 ? "new" : "unknown",
+                  source: provider.sourceId,
+                  clientBuild: null,
+                  updatedAt: new Date(),
+                };
+              })
+            )
+            .onConflictDoNothing();
+          for (const r of chunk) {
+            knownItemIds.add(r.itemId);
+          }
+        }
+      }
+
       const { valid, rejected } = validateMarketRows(
         rawRows,
         knownItemIds.size > 0 ? knownItemIds : undefined

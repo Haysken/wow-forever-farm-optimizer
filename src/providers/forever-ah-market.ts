@@ -77,7 +77,12 @@ const foreverAhHouseSchema = z.object({
 const foreverAhMarketRowSchema = z.object({
   item: z.object({
     item_id: z.number().int().positive(),
-    name: z.string().optional(),
+    name: z.string().nullable().optional(),
+    quality: z.string().nullable().optional(),
+    item_class: z.string().nullable().optional(),
+    item_subclass: z.string().nullable().optional(),
+    item_level: z.number().int().nullable().optional(),
+    required_level: z.number().int().nullable().optional(),
     sell_price: z.number().nullable().optional(),
   }),
   current: z
@@ -300,6 +305,18 @@ export class ForeverAHMarketAdapter implements MarketDataProvider {
       mapped.push({
         marketId,
         itemId: row.item.item_id,
+        itemMeta: {
+          name:
+            row.item.name && row.item.name.trim().length > 0
+              ? row.item.name.trim()
+              : `Item #${row.item.item_id}`,
+          quality: row.item.quality ?? null,
+          itemClass: row.item.item_class ?? null,
+          itemSubclass: row.item.item_subclass ?? null,
+          itemLevel: row.item.item_level ?? null,
+          requiredLevel: row.item.required_level ?? null,
+          vendorSellCopper: Math.max(0, Math.round(row.item.sell_price ?? 0)),
+        },
         lowestBuyoutCopper: minUnit !== null ? Math.round(minUnit) : null,
         p10Copper: p10Unit !== null ? Math.round(p10Unit) : null,
         medianCopper: medianUnit !== null ? Math.round(medianUnit) : null,

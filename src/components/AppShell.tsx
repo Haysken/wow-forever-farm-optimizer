@@ -9,10 +9,11 @@ import {
   Coins,
   Dice5,
   Search,
+  Store,
   TrendingUp,
   Upload,
 } from "lucide-react";
-import { getRarityMeta } from "@/lib/wow-ui";
+import { formatCopperShort, getRarityMeta } from "@/lib/wow-ui";
 
 interface SearchResultPayload {
   items: Array<{
@@ -21,6 +22,9 @@ interface SearchResultPayload {
     quality: number;
     itemClass: string | null;
     iconUrl: string | null;
+    isNewForever?: boolean;
+    clearingPriceCopper?: number | null;
+    priceMarketId?: string | null;
   }>;
   creatures: Array<{
     id: number;
@@ -39,6 +43,7 @@ interface SearchResultPayload {
 
 const NAV_ITEMS = [
   { href: "/", label: "Farm Rankings", icon: Coins },
+  { href: "/market", label: "Auction House", icon: Store },
   { href: "/simulator", label: "Simulator", icon: Dice5 },
   { href: "/watchlist", label: "Watchlist", icon: Bookmark },
   { href: "/opportunities", label: "Opportunities", icon: TrendingUp },
@@ -153,8 +158,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-400/80">
                           Items
                         </div>
-                        {results.items.slice(0, 6).map((item) => {
+                        {results.items.slice(0, 8).map((item) => {
                           const rarity = getRarityMeta(item.quality);
+                          const targetMarket = item.priceMarketId ?? "us:0";
                           return (
                             <button
                               key={item.id}
@@ -162,15 +168,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                               onClick={() => {
                                 setOpen(false);
                                 setQuery("");
-                                router.push(`/items/${item.id}`);
+                                router.push(
+                                  `/items/${item.id}?marketId=${encodeURIComponent(targetMarket)}`
+                                );
                               }}
-                              className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-zinc-800/80"
+                              className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-zinc-800/80"
                             >
-                              <span className={`font-medium ${rarity.textClass}`}>
-                                {item.name}
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                <span
+                                  className={`truncate font-medium ${rarity.textClass}`}
+                                >
+                                  {item.name}
+                                </span>
+                                {item.isNewForever && (
+                                  <span className="shrink-0 rounded border border-violet-500/40 bg-violet-500/15 px-1 py-0.2 text-[9px] font-bold uppercase text-violet-300">
+                                    NEW
+                                  </span>
+                                )}
                               </span>
-                              <span className="text-[10px] text-zinc-500">
-                                #{item.id}
+                              <span className="flex shrink-0 items-center gap-2 font-mono text-[10px]">
+                                {item.clearingPriceCopper !== null &&
+                                item.clearingPriceCopper !== undefined ? (
+                                  <span className="font-semibold text-amber-300">
+                                    {formatCopperShort(item.clearingPriceCopper)}
+                                  </span>
+                                ) : (
+                                  <span className="text-zinc-600">—</span>
+                                )}
+                                <span className="text-zinc-500">#{item.id}</span>
                               </span>
                             </button>
                           );
