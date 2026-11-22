@@ -2,6 +2,12 @@ import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { loadCreatureProfitInput } from "@/db/profitability-service";
 import {
+  getItemVariantsSummary,
+  loadAggregatedVariantsByItemIds,
+  loadRegionUnifiedBasePrices,
+} from "@/db/variant-service";
+import { resolveVariantMarketPrice } from "@/domain/market/variant-pricing";
+import {
   ensureCreatureHydrated,
   ensureItemHydrated,
 } from "@/ingestion/on-demand-hydrator";
@@ -472,11 +478,14 @@ export async function getItemDetail(
     (a, b) => b.totalEgphCopper - a.totalEgphCopper || b.dropRate - a.dropRate
   );
 
+  const variants = await getItemVariantsSummary(itemId, item.vendorSellCopper);
+
   return {
     item,
     selectedMarket: effectiveMarket,
     region,
     markets: marketsWithLiquidity,
+    variants,
     historyHourly: historyHourly.map((p) => ({
       ts: p.bucketTs.toISOString(),
       minCopper: p.minCopper,
@@ -502,62 +511,96 @@ export async function getItemDetail(
 export async function unifiedSearch(query: string, limit = 15) {
   const db = getDb();
   const q = query.trim();
-  if (!q) return { items: [], creatures: [], zones: [] };
+  if (!q) return { items: [], variants: [], creatures: [], zones: [] };
 
   const numericId = /^\d+$/.test(q) ? Number(q) : null;
+  const variantKeyMatch = /^(\d+):(\d+)$/.exec(q);
   const pattern = `%${q}%`;
 
-  const [foundItems, foundCreatures, foundZones] = await Promise.all([
-    db
-      .select({
-        id: schema.items.id,
-        name: schema.items.name,
-        quality: schema.items.quality,
-        itemClass: schema.items.itemClass,
-        iconUrl: schema.items.iconUrl,
-      })
-      .from(schema.items)
-      .where(
-        numericId !== null
-          ? or(eq(schema.items.id, numericId), ilike(schema.items.name, pattern))
-          : ilike(schema.items.name, pattern)
-      )
-      .orderBy(asc(sql`length(${schema.items.name})`), desc(schema.items.id))
-      .limit(limit),
-    db
-      .select({
-        id: schema.creatures.id,
-        name: schema.creatures.name,
-        minLevel: schema.creatures.minLevel,
-        maxLevel: schema.creatures.maxLevel,
-        primaryZoneName: schema.creatures.primaryZoneName,
-        classification: schema.creatures.classification,
-      })
-      .from(schema.creatures)
-      .where(
-        numericId !== null
-          ? or(
-              eq(schema.creatures.id, numericId),
-              ilike(schema.creatures.name, pattern)
-            )
-          : ilike(schema.creatures.name, pattern)
-      )
-      .limit(limit),
-    db
-      .select({
-        id: schema.zones.id,
-        name: schema.zones.name,
-        continent: schema.zones.continent,
-        minLevel: schema.zones.minLevel,
-        maxLevel: schema.zones.maxLevel,
-      })
-      .from(schema.zones)
-      .where(ilike(schema.zones.name, pattern))
-      .limit(10),
-  ]);
+  const [foundItems, foundVariants, foundCreatures, foundZones] =
+    await Promise.all([
+      db
+        .select({
+          id: schema.items.id,
+          name: schema.items.name,
+          quality: schema.items.quality,
+          itemClass: schema.items.itemClass,
+          iconUrl: schema.items.iconUrl,
+        })
+        .from(schema.items)
+        .where(
+          numericId !== null
+            ? or(eq(schema.items.id, numericId), ilike(schema.items.name, pattern))
+            : ilike(schema.items.name, pattern)
+        )
+        .orderBy(asc(sql`length(${schema.items.name})`), desc(schema.items.id))
+        .limit(limit),
+      db
+        .select({
+          id: schema.itemVariants.id,
+          itemId: schema.itemVariants.itemId,
+          suffixId: schema.itemVariants.suffixId,
+          fullName: schema.itemVariants.fullName,
+          suffixName: schema.itemVariants.suffixName,
+          quality: schema.items.quality,
+          vendorSellCopper: schema.items.vendorSellCopper,
+          iconUrl: schema.items.iconUrl,
+        })
+        .from(schema.itemVariants)
+        .innerJoin(schema.items, eq(schema.itemVariants.itemId, schema.items.id))
+        .where(
+          variantKeyMatch
+            ? eq(schema.itemVariants.id, q)
+            : numericId !== null
+              ? or(
+                  eq(schema.itemVariants.itemId, numericId),
+                  eq(schema.itemVariants.suffixId, numericId),
+                  ilike(schema.itemVariants.fullName, pattern)
+                )
+              : ilike(schema.itemVariants.fullName, pattern)
+        )
+        .orderBy(
+          asc(sql`length(${schema.itemVariants.fullName})`),
+          asc(schema.itemVariants.suffixId)
+        )
+        .limit(limit),
+      db
+        .select({
+          id: schema.creatures.id,
+          name: schema.creatures.name,
+          minLevel: schema.creatures.minLevel,
+          maxLevel: schema.creatures.maxLevel,
+          primaryZoneName: schema.creatures.primaryZoneName,
+          classification: schema.creatures.classification,
+        })
+        .from(schema.creatures)
+        .where(
+          numericId !== null
+            ? or(
+                eq(schema.creatures.id, numericId),
+                ilike(schema.creatures.name, pattern)
+              )
+            : ilike(schema.creatures.name, pattern)
+        )
+        .limit(limit),
+      db
+        .select({
+          id: schema.zones.id,
+          name: schema.zones.name,
+          continent: schema.zones.continent,
+          minLevel: schema.zones.minLevel,
+          maxLevel: schema.zones.maxLevel,
+        })
+        .from(schema.zones)
+        .where(ilike(schema.zones.name, pattern))
+        .limit(10),
+    ]);
 
   const itemIds = foundItems.map((i) => i.id);
-  const priceByItem = new Map<number, { clearingPriceCopper: number | null; marketId: string }>();
+  const priceByItem = new Map<
+    number,
+    { clearingPriceCopper: number | null; marketId: string }
+  >();
   if (itemIds.length > 0) {
     const snaps = await db
       .select({
@@ -584,6 +627,70 @@ export async function unifiedSearch(query: string, limit = 15) {
     }
   }
 
+  // Enrich matching random-enchant variants with BOTH US & EU prices
+  const variantBaseIds = Array.from(new Set(foundVariants.map((v) => v.itemId)));
+  const [aggVariantsMap, usBaseMap, euBaseMap] =
+    variantBaseIds.length > 0
+      ? await Promise.all([
+          loadAggregatedVariantsByItemIds(variantBaseIds),
+          loadRegionUnifiedBasePrices(variantBaseIds, "us"),
+          loadRegionUnifiedBasePrices(variantBaseIds, "eu"),
+        ])
+      : [new Map(), new Map(), new Map()];
+
+  const enrichedVariants = foundVariants.map((v) => {
+    const cands = aggVariantsMap.get(v.itemId) ?? [];
+    const cand = cands.find((c: { suffixId: number }) => c.suffixId === v.suffixId);
+    if (!cand) {
+      return {
+        id: v.id,
+        itemId: v.itemId,
+        suffixId: v.suffixId,
+        fullName: v.fullName,
+        suffixName: v.suffixName,
+        quality: v.quality,
+        iconUrl: v.iconUrl,
+        usClearingCopper: null,
+        usPriceStatus: "MISSING",
+        euClearingCopper: null,
+        euPriceStatus: "MISSING",
+      };
+    }
+
+    const usBase = usBaseMap.get(v.itemId) ?? null;
+    const euBase = euBaseMap.get(v.itemId) ?? null;
+    const usRes = resolveVariantMarketPrice({
+      targetRegion: "us",
+      targetFaction: "unified",
+      vendorSellCopper: v.vendorSellCopper,
+      targetMarketBaseCopper: usBase,
+      targetRegionUnifiedBaseCopper: usBase,
+      candidate: cand,
+    });
+    const euRes = resolveVariantMarketPrice({
+      targetRegion: "eu",
+      targetFaction: "unified",
+      vendorSellCopper: v.vendorSellCopper,
+      targetMarketBaseCopper: euBase,
+      targetRegionUnifiedBaseCopper: euBase,
+      candidate: cand,
+    });
+
+    return {
+      id: v.id,
+      itemId: v.itemId,
+      suffixId: v.suffixId,
+      fullName: v.fullName,
+      suffixName: v.suffixName,
+      quality: v.quality,
+      iconUrl: v.iconUrl,
+      usClearingCopper: usRes.clearingPriceCopper,
+      usPriceStatus: usRes.priceStatus,
+      euClearingCopper: euRes.clearingPriceCopper,
+      euPriceStatus: euRes.priceStatus,
+    };
+  });
+
   return {
     items: foundItems.map((i) => {
       const p = priceByItem.get(i.id);
@@ -594,6 +701,7 @@ export async function unifiedSearch(query: string, limit = 15) {
         priceMarketId: p?.marketId ?? null,
       };
     }),
+    variants: enrichedVariants,
     creatures: foundCreatures,
     zones: foundZones,
   };

@@ -26,6 +26,19 @@ interface SearchResultPayload {
     clearingPriceCopper?: number | null;
     priceMarketId?: string | null;
   }>;
+  variants?: Array<{
+    id: string;
+    itemId: number;
+    suffixId: number;
+    fullName: string;
+    suffixName: string;
+    quality: number;
+    iconUrl: string | null;
+    usClearingCopper: number | null;
+    usPriceStatus: string;
+    euClearingCopper: number | null;
+    euPriceStatus: string;
+  }>;
   creatures: Array<{
     id: number;
     name: string;
@@ -146,13 +159,69 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
 
             {open && results && (
-              <div className="absolute right-0 mt-1.5 max-h-96 w-full overflow-y-auto rounded-lg border border-amber-500/25 bg-[#12161f] p-2 shadow-2xl">
-                {results.items.length === 0 && results.creatures.length === 0 ? (
+              <div className="absolute right-0 mt-1.5 max-h-96 w-full sm:w-[28rem] overflow-y-auto rounded-lg border border-amber-500/25 bg-[#12161f] p-2 shadow-2xl">
+                {results.items.length === 0 &&
+                (results.variants?.length ?? 0) === 0 &&
+                results.creatures.length === 0 ? (
                   <p className="px-2 py-3 text-center text-xs text-zinc-500">
-                    No matching items or creatures found.
+                    No matching items, enchanted variants, or creatures found.
                   </p>
                 ) : (
                   <>
+                    {(results.variants?.length ?? 0) > 0 && (
+                      <div className="mb-2">
+                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-fuchsia-400">
+                          Enchanted Variants (US &amp; EU)
+                        </div>
+                        {(results.variants ?? []).slice(0, 8).map((v) => {
+                          const rarity = getRarityMeta(v.quality);
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => {
+                                setOpen(false);
+                                setQuery("");
+                                router.push(
+                                  `/items/${v.itemId}/${v.suffixId}?marketId=us:0`
+                                );
+                              }}
+                              className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-zinc-800/80"
+                            >
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                <span
+                                  className={`truncate font-medium ${rarity.textClass}`}
+                                >
+                                  {v.fullName}
+                                </span>
+                                <span className="shrink-0 rounded border border-fuchsia-500/40 bg-fuchsia-500/15 px-1 py-0.2 text-[9px] font-bold uppercase text-fuchsia-300">
+                                  VARIANT
+                                </span>
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
+                                {v.usClearingCopper !== null && (
+                                  <span
+                                    title={`US ${v.usPriceStatus}`}
+                                    className="text-amber-300"
+                                  >
+                                    US {formatCopperShort(v.usClearingCopper)}
+                                  </span>
+                                )}
+                                {v.euClearingCopper !== null && (
+                                  <span
+                                    title={`EU ${v.euPriceStatus}`}
+                                    className="text-emerald-300"
+                                  >
+                                    EU {formatCopperShort(v.euClearingCopper)}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {results.items.length > 0 && (
                       <div className="mb-2">
                         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-400/80">

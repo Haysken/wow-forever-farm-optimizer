@@ -1,6 +1,11 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import {
+  loadAggregatedVariantsByItemIds,
+  loadRegionUnifiedBasePrices,
+} from "@/db/variant-service";
+import { expandLootDropsWithVariants } from "@/domain/market/variant-pricing";
+import {
   calculateCreatureProfitability,
   DEFAULT_MARKET_COMMISSIONS,
   type CreatureProfitabilityResult,
@@ -115,7 +120,7 @@ export async function loadCreatureProfitInput(
     )
     .where(eq(schema.creatureLootResolved.creatureId, creatureId));
 
-  const loot: LootDropInput[] = rows.map((r) => ({
+  const baseLoot: LootDropInput[] = rows.map((r) => ({
     itemId: r.item.id,
     itemName: r.item.name,
     quality: r.item.quality,
@@ -160,6 +165,20 @@ export async function loadCreatureProfitInput(
     daysSeen: r.sales?.daysSeen ?? null,
     salesDataStatus: r.sales?.dataStatus ?? "MISSING",
   }));
+
+  const targetRegion = market?.region ?? marketId.split(":")[0] ?? "us";
+  const targetFaction: MarketFaction = market?.faction ?? "unified";
+  const lootItemIds = baseLoot.map((l) => l.itemId);
+  const [variantsByItem, regionUnifiedBase] = await Promise.all([
+    loadAggregatedVariantsByItemIds(lootItemIds),
+    loadRegionUnifiedBasePrices(lootItemIds, targetRegion),
+  ]);
+
+  const loot = expandLootDropsWithVariants(baseLoot, variantsByItem, {
+    targetRegion,
+    targetFaction,
+    regionUnifiedBaseByItem: regionUnifiedBase,
+  });
 
   return {
     creature,
@@ -316,13 +335,19 @@ export async function computeFarmRankings(options: RankingQueryOptions): Promise
     });
   }
 
+  const targetRegion = market?.region ?? options.marketId.split(":")[0] ?? "us";
+  const allLootItemIds = Array.from(new Set(joined.map((r) => r.item.id)));
+  const [variantsByItem, regionUnifiedBase] = await Promise.all([
+    loadAggregatedVariantsByItemIds(allLootItemIds),
+    loadRegionUnifiedBasePrices(allLootItemIds, targetRegion),
+  ]);
+
   const profitParams: ProfitabilityParams = {
     killsPerHour: options.killsPerHour,
     hourlyExpensesCopper: options.hourlyExpensesCopper ?? 0,
     marketFaction,
     commissionRate,
     timeHorizonDays: options.timeHorizonDays ?? 1,
-    allowedConfidenceTiers: new Set(allowedTiers),
   };
 
   const searchLower = options.search?.trim().toLowerCase() ?? "";
@@ -331,7 +356,12 @@ export async function computeFarmRankings(options: RankingQueryOptions): Promise
 
   const evaluated: Omit<RankedCreatureRow, "rank">[] = [];
 
-  for (const { creature, loot, trendByItem, categories } of byCreature.values()) {
+  for (const { creature, loot: baseLoot, trendByItem, categories } of byCreature.values()) {
+    const loot = expandLootDropsWithVariants(baseLoot, variantsByItem, {
+      targetRegion,
+      targetFaction: marketFaction,
+      regionUnifiedBaseByItem: regionUnifiedBase,
+    });
     if (zoneLower && (creature.primaryZoneName ?? "").toLowerCase() !== zoneLower) {
       continue;
     }

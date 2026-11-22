@@ -8,6 +8,13 @@
       "when": 1795266566881,
       "tag": "0000_sticky_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795363795400,
+      "tag": "0001_shocking_veda",
+      "breakpoints": true
     }
   ]
 }
