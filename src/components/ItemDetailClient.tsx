@@ -64,6 +64,20 @@ interface ItemDetailResponse {
       status: "ESTIMATED" | "UNKNOWN";
     };
   }>;
+  variants?: Array<{
+    variantId: string;
+    itemId: number;
+    suffixId: number;
+    fullName: string;
+    suffixName: string;
+    suffixMultiplier: number | null;
+    euClearingCopper: number | null;
+    euPriceStatus: string;
+    euSupplyQty: number;
+    usClearingCopper: number | null;
+    usPriceStatus: string;
+    usCalibrationNote: string;
+  }>;
   historyHourly: Array<{
     ts: string;
     minCopper: number | null;
@@ -404,6 +418,69 @@ export function ItemDetailClient({
           );
         })}
       </section>
+
+      {/* Random Enchantment Versions (US & EU) */}
+      {data.variants && data.variants.length > 0 && (
+        <section className="overflow-hidden rounded-xl border border-fuchsia-500/30 bg-[#12161f]">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-2.5">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-fuchsia-300">
+              Random Enchantment Versions ({data.variants.length}) — US &amp; EU
+            </h2>
+            <span className="text-[11px] text-zinc-500">
+              Click any enchanted version for its dedicated page, history &amp; drop odds
+            </span>
+          </div>
+          <div className="overflow-x-auto max-h-80">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 bg-[#0d1017] text-[10px] uppercase text-zinc-400">
+                <tr>
+                  <th className="px-3 py-2">Enchanted Version</th>
+                  <th className="px-3 py-2">Suffix</th>
+                  <th className="px-3 py-2 text-right">vs Base</th>
+                  <th className="px-3 py-2 text-right">US Price</th>
+                  <th className="px-3 py-2 text-right">EU Price (Scanned)</th>
+                  <th className="px-3 py-2 text-right">EU Supply</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/70">
+                {data.variants.map((v) => (
+                  <tr
+                    key={v.variantId}
+                    className="hover:bg-fuchsia-500/[0.05]"
+                  >
+                    <td className="px-3 py-2">
+                      <Link
+                        href={`/items/${item.id}/${v.suffixId}?marketId=${encodeURIComponent(marketId)}`}
+                        className={`font-semibold hover:underline ${rarity.textClass}`}
+                      >
+                        {v.fullName}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-zinc-400">{v.suffixName}</td>
+                    <td className="px-3 py-2 text-right font-mono text-fuchsia-300">
+                      {v.suffixMultiplier !== null
+                        ? `${v.suffixMultiplier.toFixed(2)}×`
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-amber-300">
+                      {formatCopperFull(v.usClearingCopper)}
+                      <span className="ml-1 text-[9px] text-zinc-500">
+                        ({v.usPriceStatus === "ACTUAL" ? "ACT" : "EST"})
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-emerald-300">
+                      {formatCopperFull(v.euClearingCopper)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-400">
+                      {v.euSupplyQty.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* All Active Houses Breakdown in Region */}
       {activeRegionHouses.length > 0 && (

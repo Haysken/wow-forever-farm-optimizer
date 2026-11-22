@@ -57,6 +57,11 @@ export const DEFAULT_MARKET_COMMISSIONS: Record<MarketFaction, number> = {
 
 export interface LootDropInput {
   itemId: number;
+  variantId?: string | null;
+  suffixId?: number | null;
+  suffixName?: string | null;
+  variantCountForBase?: number | null;
+  variantPriceNote?: string | null;
   itemName: string;
   quality: number;
   bindType: BindType;
@@ -151,6 +156,11 @@ export type LiquidationChannel = "none" | "vendor" | "auction_house";
 
 export interface ItemContribution {
   itemId: number;
+  variantId: string | null;
+  suffixId: number | null;
+  suffixName: string | null;
+  variantCountForBase: number | null;
+  variantPriceNote: string | null;
   itemName: string;
   quality: number;
   lootMethod: LootMethod;

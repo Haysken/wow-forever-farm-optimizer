@@ -53,6 +53,10 @@ interface RankingRow {
     weightedLiquidityScore: number | null;
     bestDrop: {
       itemId: number;
+      variantId?: string | null;
+      suffixId?: number | null;
+      suffixName?: string | null;
+      variantPriceNote?: string | null;
       itemName: string;
       quality: number;
       dropRate: number;
@@ -654,12 +658,26 @@ export function DashboardClient() {
                       </td>
                       <td className="px-3 py-2.5">
                         {best ? (
-                          <Link
-                            href={`/items/${best.itemId}?marketId=${encodeURIComponent(marketId)}`}
-                            className={`font-medium hover:underline ${rarity?.textClass ?? "text-zinc-200"}`}
-                          >
-                            {best.itemName}
-                          </Link>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Link
+                              href={
+                                best.suffixId
+                                  ? `/items/${best.itemId}/${best.suffixId}?marketId=${encodeURIComponent(marketId)}`
+                                  : `/items/${best.itemId}?marketId=${encodeURIComponent(marketId)}`
+                              }
+                              className={`font-medium hover:underline ${rarity?.textClass ?? "text-zinc-200"}`}
+                            >
+                              {best.itemName}
+                            </Link>
+                            {best.suffixId && (
+                              <span
+                                title={best.variantPriceNote ?? "Random enchant variant"}
+                                className="rounded border border-fuchsia-500/40 bg-fuchsia-500/15 px-1 py-0.2 text-[9px] font-bold uppercase text-fuchsia-300"
+                              >
+                                VARIANT
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-zinc-600">Coin / None</span>
                         )}

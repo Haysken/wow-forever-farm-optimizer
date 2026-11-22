@@ -68,6 +68,11 @@ interface CreatureDetailResponse {
     weightedLiquidityScore: number | null;
     items: Array<{
       itemId: number;
+      variantId?: string | null;
+      suffixId?: number | null;
+      suffixName?: string | null;
+      variantCountForBase?: number | null;
+      variantPriceNote?: string | null;
       itemName: string;
       quality: number;
       lootMethod: string;
@@ -82,6 +87,7 @@ interface CreatureDetailResponse {
       confidenceTier: ConfidenceTier;
       sampleSize: number | null;
       source: string;
+      priceStatus?: string;
       liquidity: {
         score: number | null;
         sellingProbability: number | null;
@@ -113,6 +119,8 @@ interface CreatureDetailResponse {
     }>;
     bestItem: {
       itemId: number;
+      variantId?: string | null;
+      suffixId?: number | null;
       itemName: string;
       quality: number;
       dropRate: number;
@@ -145,6 +153,8 @@ export function CreatureDetailClient({
   const [data, setData] = useState<CreatureDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lootFilter, setLootFilter] = useState("");
+  const [variantsOnly, setVariantsOnly] = useState(false);
 
   // User-submitted WoW Forever drop observation state
   const [showObsForm, setShowObsForm] = useState(false);
@@ -412,7 +422,11 @@ export function CreatureDetailClient({
             {verdict.bestItem ? (
               <>
                 <Link
-                  href={`/items/${verdict.bestItem.itemId}?marketId=${encodeURIComponent(marketId)}`}
+                  href={
+                    verdict.bestItem.suffixId
+                      ? `/items/${verdict.bestItem.itemId}/${verdict.bestItem.suffixId}?marketId=${encodeURIComponent(marketId)}`
+                      : `/items/${verdict.bestItem.itemId}?marketId=${encodeURIComponent(marketId)}`
+                  }
                   className={`mt-1 block truncate text-sm font-semibold hover:underline ${bestItemRarity?.textClass ?? "text-zinc-100"}`}
                 >
                   {verdict.bestItem.itemName}
@@ -569,224 +583,297 @@ export function CreatureDetailClient({
 
       {/* Complete Loot Table */}
       <section className="overflow-hidden rounded-xl border border-zinc-800 bg-[#12161f]">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
-              <Coins className="h-4 w-4 text-amber-400" />
-              Complete Loot Table ({profitability.items.length} drops)
-            </h2>
-            <span className="text-[11px] text-zinc-500">
-              All drops contribute to EGPH · Quest items valued at 0c · BoP/Gray
-              routed to Vendor
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowObsForm((v) => !v)}
-            className="rounded border border-sky-500/40 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/25"
-          >
-            {showObsForm ? "Close" : "+ Record Observed Forever Drop"}
-          </button>
-        </div>
+        {(() => {
+          const variantRowCount = profitability.items.filter(
+            (i) => i.suffixId !== null && i.suffixId !== undefined
+          ).length;
+          const qLower = lootFilter.trim().toLowerCase();
+          const filteredItems = profitability.items.filter((i) => {
+            if (variantsOnly && !i.suffixId) return false;
+            if (!qLower) return true;
+            return (
+              i.itemName.toLowerCase().includes(qLower) ||
+              (i.suffixName ?? "").toLowerCase().includes(qLower) ||
+              String(i.itemId) === qLower
+            );
+          });
 
-        {showObsForm && (
-          <div className="border-b border-zinc-800 bg-[#0d1017] p-4 text-xs space-y-3">
-            <p className="text-zinc-400">
-              Looted a brand-new WoW Forever item not yet in Everloot/EverlookDB?
-              Record your observed sample size below. Saved transparently as{" "}
-              <strong className="text-sky-300">OBSERVED (user_observation)</strong>{" "}
-              — never presented as Verified or Classic data.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <div className="sm:col-span-2 relative">
-                <label className="mb-1 block text-[11px] text-zinc-400">
-                  Search Item Name or ID
-                </label>
-                <input
-                  type="text"
-                  value={obsItemQuery}
-                  onChange={(e) => {
-                    setObsItemQuery(e.target.value);
-                    setObsItemId(null);
-                  }}
-                  placeholder="e.g. Recipe: Elixir of Strength or 250385"
-                  className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
-                />
-                {obsSearchHits.length > 0 && !obsItemId && (
-                  <div className="absolute z-20 mt-1 w-full rounded border border-zinc-700 bg-[#12161f] p-1 shadow-xl">
-                    {obsSearchHits.map((it) => {
-                      const r = getRarityMeta(it.quality);
+          return (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
+                    <Coins className="h-4 w-4 text-amber-400" />
+                    Complete Loot Table ({filteredItems.length} of{" "}
+                    {profitability.items.length} entries
+                    {variantRowCount > 0
+                      ? ` · ${variantRowCount} enchanted variants`
+                      : ""}
+                    )
+                  </h2>
+                  <span className="text-[11px] text-zinc-500">
+                    All drops &amp; random-enchant variants contribute to EGPH
+                    (1/N split prevents EV inflation) · BoP/Gray routed to Vendor
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={lootFilter}
+                    onChange={(e) => setLootFilter(e.target.value)}
+                    placeholder='Filter item or suffix (e.g. "of the Monkey")...'
+                    className="w-56 rounded border border-zinc-700 bg-[#0d1016] px-2.5 py-1 text-xs text-zinc-100 placeholder:text-zinc-500"
+                  />
+                  {variantRowCount > 0 && (
+                    <label className="flex cursor-pointer items-center gap-1.5 rounded border border-fuchsia-500/35 bg-fuchsia-500/10 px-2 py-1 text-[11px] text-fuchsia-200">
+                      <input
+                        type="checkbox"
+                        checked={variantsOnly}
+                        onChange={(e) => setVariantsOnly(e.target.checked)}
+                        className="accent-fuchsia-400"
+                      />
+                      <span>Variants Only</span>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowObsForm((v) => !v)}
+                    className="rounded border border-sky-500/40 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/25"
+                  >
+                    {showObsForm ? "Close" : "+ Record Observed Forever Drop"}
+                  </button>
+                </div>
+              </div>
+
+              {showObsForm && (
+                <div className="border-b border-zinc-800 bg-[#0d1017] p-4 text-xs space-y-3">
+                  <p className="text-zinc-400">
+                    Looted a brand-new WoW Forever item not yet in
+                    Everloot/EverlookDB? Record your observed sample size below.
+                    Saved transparently as{" "}
+                    <strong className="text-sky-300">
+                      OBSERVED (user_observation)
+                    </strong>{" "}
+                    — never presented as Verified or Classic data.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-4">
+                    <div className="sm:col-span-2 relative">
+                      <label className="mb-1 block text-[11px] text-zinc-400">
+                        Search Item Name or ID
+                      </label>
+                      <input
+                        type="text"
+                        value={obsItemQuery}
+                        onChange={(e) => {
+                          setObsItemQuery(e.target.value);
+                          setObsItemId(null);
+                        }}
+                        placeholder="e.g. Recipe: Elixir of Strength or 250385"
+                        className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
+                      />
+                      {obsSearchHits.length > 0 && !obsItemId && (
+                        <div className="absolute z-20 mt-1 w-full rounded border border-zinc-700 bg-[#12161f] p-1 shadow-xl">
+                          {obsSearchHits.map((it) => {
+                            const r = getRarityMeta(it.quality);
+                            return (
+                              <button
+                                key={it.id}
+                                type="button"
+                                onClick={() => {
+                                  setObsItemId(it.id);
+                                  setObsItemQuery(`${it.name} (#${it.id})`);
+                                  setObsSearchHits([]);
+                                }}
+                                className="flex w-full justify-between rounded px-2 py-1 text-left hover:bg-zinc-800"
+                              >
+                                <span className={r.textClass}>{it.name}</span>
+                                <span className="font-mono text-[10px] text-zinc-500">
+                                  #{it.id}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] text-zinc-400">
+                        Drops Observed
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={obsDrops}
+                        onChange={(e) =>
+                          setObsDrops(Math.max(1, Number(e.target.value) || 1))
+                        }
+                        className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] text-zinc-400">
+                        Total Kills Sampled
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={obsKills}
+                        onChange={(e) =>
+                          setObsKills(
+                            Math.max(obsDrops, Number(e.target.value) || 1)
+                          )
+                        }
+                        className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] text-zinc-400">
+                      Sample rate:{" "}
+                      <strong className="font-mono text-amber-300">
+                        {((obsDrops / Math.max(1, obsKills)) * 100).toFixed(2)}%
+                      </strong>{" "}
+                      ({obsDrops}/{obsKills})
+                    </span>
+                    <button
+                      type="button"
+                      disabled={!obsItemId || obsSubmitting}
+                      onClick={submitObservation}
+                      className="rounded border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 font-semibold text-amber-100 hover:bg-amber-500/30 disabled:opacity-40"
+                    >
+                      {obsSubmitting ? "Saving..." : "Save Observed Drop"}
+                    </button>
+                  </div>
+                  {obsFeedback && (
+                    <p className="text-xs text-emerald-300">{obsFeedback}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-800 bg-[#0d1017] text-[11px] uppercase tracking-wider text-zinc-400">
+                      <th className="px-3 py-2.5">Item</th>
+                      <th className="px-3 py-2.5 text-right">Drop Rate</th>
+                      <th className="px-3 py-2.5 text-right">Avg Qty</th>
+                      <th className="px-3 py-2.5">Channel</th>
+                      <th className="px-3 py-2.5 text-right">Unit Price</th>
+                      <th className="px-3 py-2.5 text-right">Liquidity / Si</th>
+                      <th className="px-3 py-2.5 text-right">K50 / K90</th>
+                      <th className="px-3 py-2.5 text-right">EV / Kill (Adj)</th>
+                      <th className="px-3 py-2.5">Provenance &amp; Sample</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/70">
+                    {filteredItems.map((item) => {
+                      const rarity = getRarityMeta(item.quality);
+                      const itemConf = CONFIDENCE_BADGE[item.confidenceTier];
+                      const itemHref = item.suffixId
+                        ? `/items/${item.itemId}/${item.suffixId}?marketId=${encodeURIComponent(marketId)}`
+                        : `/items/${item.itemId}?marketId=${encodeURIComponent(marketId)}`;
                       return (
-                        <button
-                          key={it.id}
-                          type="button"
-                          onClick={() => {
-                            setObsItemId(it.id);
-                            setObsItemQuery(`${it.name} (#${it.id})`);
-                            setObsSearchHits([]);
-                          }}
-                          className="flex w-full justify-between rounded px-2 py-1 text-left hover:bg-zinc-800"
+                        <tr
+                          key={`${item.variantId ?? item.itemId}-${item.lootMethod}`}
+                          className="hover:bg-amber-500/[0.03]"
                         >
-                          <span className={r.textClass}>{it.name}</span>
-                          <span className="font-mono text-[10px] text-zinc-500">
-                            #{it.id}
-                          </span>
-                        </button>
+                          <td className="px-3 py-2.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Link
+                                href={itemHref}
+                                className={`font-medium hover:underline ${rarity.textClass}`}
+                              >
+                                {item.itemName}
+                              </Link>
+                              {item.suffixId && (
+                                <span className="rounded border border-fuchsia-500/40 bg-fuchsia-500/15 px-1 py-0.2 text-[9px] font-bold uppercase text-fuchsia-300">
+                                  VARIANT
+                                </span>
+                              )}
+                              <span className="font-mono text-[10px] text-zinc-600">
+                                #{item.variantId ?? item.itemId}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-zinc-200">
+                            {formatPercent(
+                              item.dropRate,
+                              item.suffixId ? 3 : 2
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-zinc-400">
+                            {item.avgQty.toFixed(2)}
+                            {item.avgQtyIsAssumed && (
+                              <span
+                                title="Defaulted to 1.0 (source rollup counts loot windows, not stack size)"
+                                className="ml-0.5 text-zinc-600"
+                              >
+                                *
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] uppercase text-zinc-300">
+                              {item.liquidationChannel === "auction_house"
+                                ? `AH (${(item.effectiveCommissionRate * 100).toFixed(0)}%)`
+                                : item.liquidationChannel}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-zinc-200">
+                            <div>{formatCopperShort(item.unitGrossCopper)}</div>
+                            {item.variantPriceNote && (
+                              <div className="text-[9px] text-zinc-500">
+                                {item.variantPriceNote}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono">
+                            {item.liquidationChannel === "vendor" ? (
+                              <span className="text-emerald-400">
+                                100% (Vendor)
+                              </span>
+                            ) : item.liquidity.status === "ESTIMATED" ? (
+                              <span className="text-zinc-300">
+                                {item.liquidity.score?.toFixed(0)}/100 ·{" "}
+                                {formatPercent(
+                                  item.liquidity.sellingProbability,
+                                  0
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-500">Unknown</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-zinc-400">
+                            {item.dropMetrics.killsFor50Pct !== null
+                              ? `${Math.ceil(item.dropMetrics.killsFor50Pct).toLocaleString()} / ${Math.ceil(item.dropMetrics.killsFor90Pct ?? 0).toLocaleString()}`
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono font-semibold text-amber-300">
+                            {formatCopperShort(
+                              item.expectedLiquidityAdjustedPerKillCopper
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span
+                              className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${itemConf.className}`}
+                            >
+                              {itemConf.short}
+                            </span>
+                            <span className="ml-1.5 text-[10px] text-zinc-500">
+                              {item.source}
+                              {item.sampleSize ? ` (n=${item.sampleSize})` : ""}
+                            </span>
+                          </td>
+                        </tr>
                       );
                     })}
-                  </div>
-                )}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <label className="mb-1 block text-[11px] text-zinc-400">
-                  Drops Observed
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={obsDrops}
-                  onChange={(e) =>
-                    setObsDrops(Math.max(1, Number(e.target.value) || 1))
-                  }
-                  className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[11px] text-zinc-400">
-                  Total Kills Sampled
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={obsKills}
-                  onChange={(e) =>
-                    setObsKills(Math.max(obsDrops, Number(e.target.value) || 1))
-                  }
-                  className="w-full rounded border border-zinc-700 bg-[#12161f] px-2.5 py-1.5 text-zinc-100"
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[11px] text-zinc-400">
-                Sample rate:{" "}
-                <strong className="font-mono text-amber-300">
-                  {((obsDrops / Math.max(1, obsKills)) * 100).toFixed(2)}%
-                </strong>{" "}
-                ({obsDrops}/{obsKills})
-              </span>
-              <button
-                type="button"
-                disabled={!obsItemId || obsSubmitting}
-                onClick={submitObservation}
-                className="rounded border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 font-semibold text-amber-100 hover:bg-amber-500/30 disabled:opacity-40"
-              >
-                {obsSubmitting ? "Saving..." : "Save Observed Drop"}
-              </button>
-            </div>
-            {obsFeedback && (
-              <p className="text-xs text-emerald-300">{obsFeedback}</p>
-            )}
-          </div>
-        )}
-
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left text-xs">
-            <thead>
-              <tr className="border-b border-zinc-800 bg-[#0d1017] text-[11px] uppercase tracking-wider text-zinc-400">
-                <th className="px-3 py-2.5">Item</th>
-                <th className="px-3 py-2.5 text-right">Drop Rate</th>
-                <th className="px-3 py-2.5 text-right">Avg Qty</th>
-                <th className="px-3 py-2.5">Channel</th>
-                <th className="px-3 py-2.5 text-right">Unit Price</th>
-                <th className="px-3 py-2.5 text-right">Liquidity / Si</th>
-                <th className="px-3 py-2.5 text-right">K50 / K90</th>
-                <th className="px-3 py-2.5 text-right">EV / Kill (Adj)</th>
-                <th className="px-3 py-2.5">Provenance &amp; Sample</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/70">
-              {profitability.items.map((item) => {
-                const rarity = getRarityMeta(item.quality);
-                const itemConf = CONFIDENCE_BADGE[item.confidenceTier];
-                return (
-                  <tr
-                    key={`${item.itemId}-${item.lootMethod}`}
-                    className="hover:bg-amber-500/[0.03]"
-                  >
-                    <td className="px-3 py-2.5">
-                      <Link
-                        href={`/items/${item.itemId}?marketId=${encodeURIComponent(marketId)}`}
-                        className={`font-medium hover:underline ${rarity.textClass}`}
-                      >
-                        {item.itemName}
-                      </Link>
-                      <span className="ml-1.5 font-mono text-[10px] text-zinc-600">
-                        #{item.itemId}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-zinc-200">
-                      {formatPercent(item.dropRate)}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-zinc-400">
-                      {item.avgQty.toFixed(2)}
-                      {item.avgQtyIsAssumed && (
-                        <span
-                          title="Defaulted to 1.0 (source rollup counts loot windows, not stack size)"
-                          className="ml-0.5 text-zinc-600"
-                        >
-                          *
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] uppercase text-zinc-300">
-                        {item.liquidationChannel === "auction_house"
-                          ? `AH (${(item.effectiveCommissionRate * 100).toFixed(0)}%)`
-                          : item.liquidationChannel}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-zinc-200">
-                      {formatCopperShort(item.unitGrossCopper)}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono">
-                      {item.liquidationChannel === "vendor" ? (
-                        <span className="text-emerald-400">100% (Vendor)</span>
-                      ) : item.liquidity.status === "ESTIMATED" ? (
-                        <span className="text-zinc-300">
-                          {item.liquidity.score?.toFixed(0)}/100 ·{" "}
-                          {formatPercent(item.liquidity.sellingProbability, 0)}
-                        </span>
-                      ) : (
-                        <span className="text-zinc-500">Unknown</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-zinc-400">
-                      {item.dropMetrics.killsFor50Pct !== null
-                        ? `${Math.ceil(item.dropMetrics.killsFor50Pct)} / ${Math.ceil(item.dropMetrics.killsFor90Pct ?? 0)}`
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-amber-300">
-                      {formatCopperShort(
-                        item.expectedLiquidityAdjustedPerKillCopper
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${itemConf.className}`}
-                      >
-                        {itemConf.short}
-                      </span>
-                      <span className="ml-1.5 text-[10px] text-zinc-500">
-                        {item.source}
-                        {item.sampleSize ? ` (n=${item.sampleSize})` : ""}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+            </>
+          );
+        })()}
       </section>
     </div>
   );

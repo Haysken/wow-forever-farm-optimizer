@@ -73,6 +73,7 @@ npm run sync:catalog          # Zones, items (22.8k), creatures (9.9k) from Ever
 npm run sync:loot             # Observed WoW Forever drops from Everloot (+ optional EverlookDB NPCs)
 npm run sync:markets          # Alliance, Horde, Blackwater, and Unified AH snapshots from Forever AH
 npm run sync:markets:unified  # Full regional snapshot (all active items including new 250xxx items in US/EU)
+npm run sync:variants         # Random-enchant item variants (itemId:suffixId) from EverlookDB addon scans
 npm run db:optimize           # Applies pg_trgm GIN indexes + composite snapshot indexes + ANALYZE
 npm run sync:all              # Combined scheduled sync orchestrator (see scripts/github-actions-scheduled-sync.yml)
 npm run watch:addon           # Optional: auto-import SavedVariables/WoWForeverFarmOptimizer.lua on /reload

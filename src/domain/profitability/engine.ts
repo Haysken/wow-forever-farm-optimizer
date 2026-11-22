@@ -242,6 +242,11 @@ export function calculateCreatureProfitability(
 
     contributions.push({
       itemId: item.itemId,
+      variantId: item.variantId ?? null,
+      suffixId: item.suffixId ?? null,
+      suffixName: item.suffixName ?? null,
+      variantCountForBase: item.variantCountForBase ?? null,
+      variantPriceNote: item.variantPriceNote ?? null,
       itemName: item.itemName,
       quality: item.quality,
       lootMethod: item.lootMethod,

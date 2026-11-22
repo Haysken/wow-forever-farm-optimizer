@@ -16,6 +16,9 @@ export async function optimizeDatabase(): Promise<void> {
     sql`CREATE INDEX IF NOT EXISTS items_name_trgm_idx ON items USING gin (name gin_trgm_ops)`
   );
   await db.execute(
+    sql`CREATE INDEX IF NOT EXISTS item_variants_full_name_trgm_idx ON item_variants USING gin (full_name gin_trgm_ops)`
+  );
+  await db.execute(
     sql`CREATE INDEX IF NOT EXISTS creatures_name_trgm_idx ON creatures USING gin (name gin_trgm_ops)`
   );
   await db.execute(

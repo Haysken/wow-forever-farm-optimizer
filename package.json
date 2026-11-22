@@ -21,6 +21,7 @@
     "sync:loot": "tsx src/workers/sync-loot.ts",
     "sync:markets": "tsx src/workers/sync-markets.ts",
     "sync:markets:unified": "tsx -e \"process.env.SYNC_REGIONS='us,eu'; process.env.SYNC_HOUSE_IDS='0'; process.env.SYNC_LOOT_ITEMS_ONLY='0'; import('./src/workers/sync-markets.ts').then(m => m.runMarketSync({ includeUnified: true })).then(r => { console.log('[sync:markets:unified]', r); process.exit(0); })\"",
+    "sync:variants": "tsx src/workers/sync-variants.ts",
     "sync:all": "tsx src/workers/sync-all.ts",
     "watch:addon": "tsx src/workers/watch-addon.ts"
   },

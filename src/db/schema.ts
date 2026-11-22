@@ -117,6 +117,63 @@ export const items = pgTable(
   ]
 );
 
+export const itemVariants = pgTable(
+  "item_variants",
+  {
+    id: text("id").primaryKey(), // "${itemId}:${suffixId}", e.g. "727:12721"
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    suffixId: integer("suffix_id").notNull(),
+    fullName: text("full_name").notNull(),
+    suffixName: text("suffix_name").notNull(),
+    source: text("source").notNull(), // everlookdb_ah | addon_savedvariables
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("item_variants_item_idx").on(table.itemId),
+    index("item_variants_full_name_idx").on(table.fullName),
+    uniqueIndex("item_variants_item_suffix_idx").on(
+      table.itemId,
+      table.suffixId
+    ),
+  ]
+);
+
+export const itemVariantSnapshots = pgTable(
+  "item_variant_snapshots",
+  {
+    variantId: text("variant_id")
+      .notNull()
+      .references(() => itemVariants.id, { onDelete: "cascade" }),
+    houseKey: text("house_key").notNull(), // e.g. "EU-6946-Alliance" or "US-110-Alliance"
+    region: text("region").notNull(), // eu | us
+    faction: factionEnum("faction").notNull(),
+    realmLabel: text("realm_label"),
+    lowestBuyoutCopper: bigint("lowest_buyout_copper", { mode: "number" }),
+    p10Copper: bigint("p10_copper", { mode: "number" }),
+    medianCopper: bigint("median_copper", { mode: "number" }),
+    clearingPriceCopper: bigint("clearing_price_copper", { mode: "number" }),
+    baseReferenceCopper: bigint("base_reference_copper", { mode: "number" }),
+    availableQty: integer("available_qty").notNull().default(0),
+    listingCount: integer("listing_count").notNull().default(0),
+    timeLeftShort: integer("time_left_short").notNull().default(0),
+    timeLeftMedium: integer("time_left_medium").notNull().default(0),
+    timeLeftLong: integer("time_left_long").notNull().default(0),
+    timeLeftVeryLong: integer("time_left_very_long").notNull().default(0),
+    priceStatus: dataStatusEnum("price_status").notNull().default("ACTUAL"),
+    source: text("source").notNull(),
+    snapshotAt: timestamp("snapshot_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.variantId, table.houseKey] }),
+    index("item_variant_snapshots_region_idx").on(table.region, table.variantId),
+    index("item_variant_snapshots_variant_idx").on(table.variantId),
+  ]
+);
+
 export const creatures = pgTable(
   "creatures",
   {
