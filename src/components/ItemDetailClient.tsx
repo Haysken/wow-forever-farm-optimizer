@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Bookmark, BookmarkCheck, Swords } from "lucide-react";
+import { EstimatedSalesSection } from "@/components/EstimatedSalesSection";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import {
   CONFIDENCE_BADGE,
@@ -69,6 +70,7 @@ interface ItemDetailResponse {
     p10Copper: number | null;
     medianCopper: number | null;
     availableQty: number;
+    listingCount?: number;
   }>;
   historyDaily: Array<{
     ts: string;
@@ -475,6 +477,12 @@ export function ItemDetailClient({
         title={`Historical Price & Supply (${data.selectedMarket?.displayName ?? marketId})`}
         hourlyPoints={historyHourly}
         dailyPoints={historyDaily}
+      />
+
+      {/* Estimated Sales / Stock Exits (Hourly Depletions) */}
+      <EstimatedSalesSection
+        hourlyPoints={historyHourly}
+        marketLabel={data.selectedMarket?.displayName ?? marketId}
       />
 
       {/* Creature Source Comparison Table */}
