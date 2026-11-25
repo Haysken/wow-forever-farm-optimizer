@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import {
+  collapseVariantLootRows,
   defaultDirectionForLootColumn,
   sortCreatureLoot,
   type LootSortColumn,
@@ -108,6 +109,8 @@ interface CreatureDetailResponse {
         killsFor50Pct: number | null;
         killsFor90Pct: number | null;
       };
+      collapsedVariantCount?: number;
+      collapsedMaxUnitCopper?: number;
     }>;
   };
   verdict: {
@@ -164,6 +167,7 @@ export function CreatureDetailClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lootFilter, setLootFilter] = useState("");
+  const [showVariants, setShowVariants] = useState(false);
   const [variantsOnly, setVariantsOnly] = useState(false);
   const [sortCol, setSortCol] = useState<LootSortColumn>("evPerKill");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
@@ -626,9 +630,12 @@ export function CreatureDetailClient({
           const variantRowCount = profitability.items.filter(
             (i) => i.suffixId !== null && i.suffixId !== undefined
           ).length;
+          const baseItemsForView = showVariants
+            ? profitability.items
+            : collapseVariantLootRows(profitability.items);
           const qLower = lootFilter.trim().toLowerCase();
-          const filteredItems = profitability.items.filter((i) => {
-            if (variantsOnly && !i.suffixId) return false;
+          const filteredItems = baseItemsForView.filter((i) => {
+            if (showVariants && variantsOnly && !i.suffixId) return false;
             if (!qLower) return true;
             return (
               i.itemName.toLowerCase().includes(qLower) ||
@@ -683,9 +690,11 @@ export function CreatureDetailClient({
                   <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
                     <Coins className="h-4 w-4 text-amber-400" />
                     Complete Loot Table ({filteredItems.length} of{" "}
-                    {profitability.items.length} entries
+                    {baseItemsForView.length} items
                     {variantRowCount > 0
-                      ? ` · ${variantRowCount} enchanted variants`
+                      ? showVariants
+                        ? ` · ${variantRowCount} enchanted variants shown`
+                        : ` · ${variantRowCount} enchanted variants grouped`
                       : ""}
                     )
                   </h2>
@@ -699,10 +708,37 @@ export function CreatureDetailClient({
                     type="text"
                     value={lootFilter}
                     onChange={(e) => setLootFilter(e.target.value)}
-                    placeholder='Filter item or suffix (e.g. "of the Monkey")...'
+                    placeholder={
+                      showVariants
+                        ? 'Filter item or suffix (e.g. "of the Monkey")...'
+                        : "Filter item name or ID..."
+                    }
                     className="w-56 rounded border border-zinc-700 bg-[#0d1016] px-2.5 py-1 text-xs text-zinc-100 placeholder:text-zinc-500"
                   />
                   {variantRowCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowVariants((prev) => {
+                          if (prev) setVariantsOnly(false);
+                          return !prev;
+                        });
+                      }}
+                      className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                        showVariants
+                          ? "border-fuchsia-400/60 bg-fuchsia-500/25 text-fuchsia-100"
+                          : "border-fuchsia-500/35 bg-fuchsia-500/10 text-fuchsia-200 hover:bg-fuchsia-500/20"
+                      }`}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>
+                        {showVariants
+                          ? `Hide Enchanted Variants (${variantRowCount})`
+                          : `Show Enchanted Variants (${variantRowCount})`}
+                      </span>
+                    </button>
+                  )}
+                  {showVariants && variantRowCount > 0 && (
                     <label className="flex cursor-pointer items-center gap-1.5 rounded border border-fuchsia-500/35 bg-fuchsia-500/10 px-2 py-1 text-[11px] text-fuchsia-200">
                       <input
                         type="checkbox"
@@ -868,6 +904,19 @@ export function CreatureDetailClient({
                                   VARIANT
                                 </span>
                               )}
+                              {item.collapsedVariantCount && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowVariants(true);
+                                    setLootFilter(item.itemName);
+                                  }}
+                                  title="Click to expand this item's enchanted variants"
+                                  className="rounded border border-fuchsia-500/40 bg-fuchsia-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-fuchsia-200 hover:bg-fuchsia-500/30"
+                                >
+                                  +{item.collapsedVariantCount} variants
+                                </button>
+                              )}
                               <span className="font-mono text-[10px] text-zinc-600">
                                 #{item.variantId ?? item.itemId}
                               </span>
@@ -904,6 +953,16 @@ export function CreatureDetailClient({
                                 {item.variantPriceNote}
                               </div>
                             )}
+                            {item.collapsedMaxUnitCopper !== undefined &&
+                              item.collapsedMaxUnitCopper >
+                                item.unitGrossCopper && (
+                                <div className="text-[9px] text-fuchsia-300/80">
+                                  up to{" "}
+                                  {formatCopperShort(
+                                    item.collapsedMaxUnitCopper
+                                  )}
+                                </div>
+                              )}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono">
                             {item.liquidationChannel === "vendor" ? (
