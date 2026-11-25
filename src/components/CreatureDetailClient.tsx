@@ -3,14 +3,24 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
+  ArrowUpDown,
   Coins,
   Dice5,
+  ExternalLink,
   MapPin,
   ShieldAlert,
   Sparkles,
 } from "lucide-react";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
+import {
+  defaultDirectionForLootColumn,
+  sortCreatureLoot,
+  type LootSortColumn,
+  type SortDirection,
+} from "@/domain/profitability/loot-sort";
 import {
   CONFIDENCE_BADGE,
   factionBadgeClass,
@@ -155,6 +165,17 @@ export function CreatureDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [lootFilter, setLootFilter] = useState("");
   const [variantsOnly, setVariantsOnly] = useState(false);
+  const [sortCol, setSortCol] = useState<LootSortColumn>("evPerKill");
+  const [sortDir, setSortDir] = useState<SortDirection>("desc");
+
+  const handleSort = (column: LootSortColumn) => {
+    if (sortCol === column) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortCol(column);
+      setSortDir(defaultDirectionForLootColumn(column));
+    }
+  };
 
   // User-submitted WoW Forever drop observation state
   const [showObsForm, setShowObsForm] = useState(false);
@@ -313,10 +334,17 @@ export function CreatureDetailClient({
               </>
             )}
             <span>·</span>
-            <span className="inline-flex items-center gap-1 text-zinc-300">
+            <a
+              href={`https://everlookdb.com/npc/${creature.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`View exact spawn map for ${creature.name} on EverlookDB (WoW Forever)`}
+              className="inline-flex items-center gap-1 rounded border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-200 transition-colors hover:border-amber-400/70 hover:bg-amber-500/20 hover:text-amber-100"
+            >
               <MapPin className="h-3.5 w-3.5 text-amber-400" />
-              {creature.primaryZoneName ?? "Unknown Zone"}
-            </span>
+              <span>{creature.primaryZoneName ?? "View Spawn Map"}</span>
+              <ExternalLink className="h-3 w-3 text-amber-400/80" />
+            </a>
             {creature.healthMin && (
               <>
                 <span>·</span>
@@ -549,10 +577,21 @@ export function CreatureDetailClient({
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-[#12161f] p-4">
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-amber-100">
-            <MapPin className="h-4 w-4 text-amber-400" />
-            Spawn Locations ({spawns.length})
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-amber-100">
+              <MapPin className="h-4 w-4 text-amber-400" />
+              Spawn Locations ({spawns.length})
+            </h3>
+            <a
+              href={`https://everlookdb.com/npc/${creature.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20"
+            >
+              <span>EverlookDB Map</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
           {spawns.length === 0 ? (
             <p className="mt-2 text-xs text-zinc-500">
               No spawn coordinates synced for this creature yet. Zone:{" "}
@@ -597,6 +636,45 @@ export function CreatureDetailClient({
               String(i.itemId) === qLower
             );
           });
+          const sortedItems = sortCreatureLoot(filteredItems, sortCol, sortDir);
+
+          const renderSortHeader = (
+            col: LootSortColumn,
+            label: string,
+            align: "left" | "right" = "left"
+          ) => {
+            const active = sortCol === col;
+            const ariaSort: "ascending" | "descending" | "none" = active
+              ? sortDir === "asc"
+                ? "ascending"
+                : "descending"
+              : "none";
+            return (
+              <th
+                aria-sort={ariaSort}
+                className={`px-3 py-2.5 ${align === "right" ? "text-right" : "text-left"}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort(col)}
+                  className={`inline-flex items-center gap-1 rounded px-1 py-0.5 uppercase tracking-wider transition-colors hover:bg-zinc-800/80 hover:text-amber-200 ${
+                    align === "right" ? "ml-auto flex-row-reverse" : ""
+                  } ${active ? "font-bold text-amber-300" : "text-zinc-400"}`}
+                >
+                  <span>{label}</span>
+                  {active ? (
+                    sortDir === "asc" ? (
+                      <ArrowUp className="h-3 w-3 shrink-0 text-amber-300" />
+                    ) : (
+                      <ArrowDown className="h-3 w-3 shrink-0 text-amber-300" />
+                    )
+                  ) : (
+                    <ArrowUpDown className="h-3 w-3 shrink-0 text-zinc-600" />
+                  )}
+                </button>
+              </th>
+            );
+          };
 
           return (
             <>
@@ -753,20 +831,20 @@ export function CreatureDetailClient({
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
-                    <tr className="border-b border-zinc-800 bg-[#0d1017] text-[11px] uppercase tracking-wider text-zinc-400">
-                      <th className="px-3 py-2.5">Item</th>
-                      <th className="px-3 py-2.5 text-right">Drop Rate</th>
-                      <th className="px-3 py-2.5 text-right">Avg Qty</th>
-                      <th className="px-3 py-2.5">Channel</th>
-                      <th className="px-3 py-2.5 text-right">Unit Price</th>
-                      <th className="px-3 py-2.5 text-right">Liquidity / Si</th>
-                      <th className="px-3 py-2.5 text-right">K50 / K90</th>
-                      <th className="px-3 py-2.5 text-right">EV / Kill (Adj)</th>
-                      <th className="px-3 py-2.5">Provenance &amp; Sample</th>
+                    <tr className="border-b border-zinc-800 bg-[#0d1017] text-[11px]">
+                      {renderSortHeader("item", "Item", "left")}
+                      {renderSortHeader("dropRate", "Drop Rate", "right")}
+                      {renderSortHeader("avgQty", "Avg Qty", "right")}
+                      {renderSortHeader("channel", "Channel", "left")}
+                      {renderSortHeader("unitPrice", "Unit Price", "right")}
+                      {renderSortHeader("liquidity", "Liquidity / Si", "right")}
+                      {renderSortHeader("k50", "K50 / K90", "right")}
+                      {renderSortHeader("evPerKill", "EV / Kill (Adj)", "right")}
+                      {renderSortHeader("provenance", "Provenance & Sample", "left")}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/70">
-                    {filteredItems.map((item) => {
+                    {sortedItems.map((item) => {
                       const rarity = getRarityMeta(item.quality);
                       const itemConf = CONFIDENCE_BADGE[item.confidenceTier];
                       const itemHref = item.suffixId
