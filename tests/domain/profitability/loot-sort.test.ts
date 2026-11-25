@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collapseVariantLootRows,
   defaultDirectionForLootColumn,
   sortCreatureLoot,
   type SortableLootItem,
@@ -9,58 +10,78 @@ const SAMPLE_ITEMS: SortableLootItem[] = [
   {
     itemId: 1,
     itemName: "Elemental Earth",
+    quality: 1,
+    lootMethod: "kill",
     dropRate: 0.08,
     avgQty: 1.0,
+    avgQtyIsAssumed: false,
     liquidationChannel: "auction_house",
     unitGrossCopper: 35_000,
+    effectiveCommissionRate: 0.05,
     expectedGrossEvPerKillCopper: 2660,
     expectedLiquidityAdjustedPerKillCopper: 2400,
     confidenceTier: "OBSERVED",
     sampleSize: 250,
+    source: "everloot",
     liquidity: { score: 85, sellingProbability: 0.9, status: "ESTIMATED" },
-    dropMetrics: { killsFor50Pct: 9, killsFor90Pct: 28 },
+    dropMetrics: { expectedKillsPerDrop: 12.5, killsFor50Pct: 9, killsFor90Pct: 28 },
   },
   {
     itemId: 2,
     itemName: "Solid Stone",
+    quality: 1,
+    lootMethod: "kill",
     dropRate: 0.25,
     avgQty: 2.5,
+    avgQtyIsAssumed: false,
     liquidationChannel: "auction_house",
     unitGrossCopper: 1_500,
+    effectiveCommissionRate: 0.05,
     expectedGrossEvPerKillCopper: 890,
     expectedLiquidityAdjustedPerKillCopper: 700,
     confidenceTier: "VERIFIED",
     sampleSize: 600,
+    source: "everloot",
     liquidity: { score: 70, sellingProbability: 0.78, status: "ESTIMATED" },
-    dropMetrics: { killsFor50Pct: 3, killsFor90Pct: 8 },
+    dropMetrics: { expectedKillsPerDrop: 4, killsFor50Pct: 3, killsFor90Pct: 8 },
   },
   {
     itemId: 3,
     itemName: "Cracked Boulder",
+    quality: 0,
+    lootMethod: "kill",
     dropRate: 0.4,
     avgQty: 1.0,
+    avgQtyIsAssumed: false,
     liquidationChannel: "vendor",
     unitGrossCopper: 400,
+    effectiveCommissionRate: 0,
     expectedGrossEvPerKillCopper: 160,
     expectedLiquidityAdjustedPerKillCopper: 160,
     confidenceTier: "ESTIMATED",
     sampleSize: null,
+    source: "classic_db",
     liquidity: { score: null, sellingProbability: null, status: "UNKNOWN" },
-    dropMetrics: { killsFor50Pct: 2, killsFor90Pct: 5 },
+    dropMetrics: { expectedKillsPerDrop: 2.5, killsFor50Pct: 2, killsFor90Pct: 5 },
   },
   {
     itemId: 4,
     itemName: "Ancient Relic of Unknown Liquidity",
+    quality: 3,
+    lootMethod: "kill",
     dropRate: 0.005,
     avgQty: 1.0,
+    avgQtyIsAssumed: false,
     liquidationChannel: "auction_house",
     unitGrossCopper: 90_000,
+    effectiveCommissionRate: 0.05,
     expectedGrossEvPerKillCopper: 427,
     expectedLiquidityAdjustedPerKillCopper: 10,
     confidenceTier: "ESTIMATED",
     sampleSize: 50,
+    source: "classic_db",
     liquidity: { score: null, sellingProbability: null, status: "UNKNOWN" },
-    dropMetrics: { killsFor50Pct: null, killsFor90Pct: null },
+    dropMetrics: { expectedKillsPerDrop: 200, killsFor50Pct: null, killsFor90Pct: null },
   },
 ];
 
@@ -101,5 +122,51 @@ describe("sortCreatureLoot", () => {
     expect(defaultDirectionForLootColumn("item")).toBe("asc");
     expect(defaultDirectionForLootColumn("k50")).toBe("asc");
     expect(defaultDirectionForLootColumn("evPerKill")).toBe("desc");
+  });
+
+  it("collapses expanded variant rows into one base row preserving exact total dropRate and EV/kill", () => {
+    const variants: SortableLootItem[] = [
+      SAMPLE_ITEMS[0]!,
+      {
+        ...SAMPLE_ITEMS[0]!,
+        itemId: 727,
+        variantId: "727:12721",
+        suffixId: 12721,
+        suffixName: "of the Monkey",
+        itemName: "Notched Shortsword of the Monkey",
+        dropRate: 0.02,
+        unitGrossCopper: 12_000,
+        expectedGrossEvPerKillCopper: 228,
+        expectedLiquidityAdjustedPerKillCopper: 200,
+        source: "classic_db · 1/2 suffix",
+      },
+      {
+        ...SAMPLE_ITEMS[0]!,
+        itemId: 727,
+        variantId: "727:12718",
+        suffixId: 12718,
+        suffixName: "of the Eagle",
+        itemName: "Notched Shortsword of the Eagle",
+        dropRate: 0.02,
+        liquidationChannel: "vendor",
+        unitGrossCopper: 244,
+        expectedGrossEvPerKillCopper: 4.88,
+        expectedLiquidityAdjustedPerKillCopper: 4.88,
+        source: "classic_db · 1/2 suffix",
+      },
+    ];
+
+    const collapsed = collapseVariantLootRows(variants);
+    expect(collapsed).toHaveLength(2);
+    const sword = collapsed.find((i) => i.itemId === 727);
+    expect(sword).toMatchObject({
+      itemName: "Notched Shortsword",
+      suffixId: null,
+      collapsedVariantCount: 2,
+      collapsedMaxUnitCopper: 12_000,
+      source: "classic_db",
+    });
+    expect(sword?.dropRate).toBeCloseTo(0.04, 10);
+    expect(sword?.expectedLiquidityAdjustedPerKillCopper).toBeCloseTo(204.88, 6);
   });
 });

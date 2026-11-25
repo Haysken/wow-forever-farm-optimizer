@@ -1,4 +1,5 @@
 import type { ConfidenceTier } from "@/providers/types";
+import { computeDropProbabilityMetrics } from "./probabilities";
 
 export type LootSortColumn =
   | "item"
@@ -16,24 +17,37 @@ export type SortDirection = "asc" | "desc";
 export interface SortableLootItem {
   itemId: number;
   variantId?: string | null;
+  suffixId?: number | null;
+  suffixName?: string | null;
+  variantCountForBase?: number | null;
+  variantPriceNote?: string | null;
   itemName: string;
+  quality: number;
+  lootMethod: string;
   dropRate: number;
   avgQty: number;
+  avgQtyIsAssumed: boolean;
   liquidationChannel: string;
   unitGrossCopper: number;
+  effectiveCommissionRate: number;
   expectedGrossEvPerKillCopper: number;
   expectedLiquidityAdjustedPerKillCopper: number;
   confidenceTier: ConfidenceTier;
   sampleSize: number | null;
+  source: string;
   liquidity: {
     score: number | null;
     sellingProbability: number | null;
     status: "ESTIMATED" | "UNKNOWN";
   };
   dropMetrics: {
+    expectedKillsPerDrop: number | null;
     killsFor50Pct: number | null;
     killsFor90Pct: number | null;
   };
+  /** Populated when multiple random-enchant variants are collapsed into 1 base item row */
+  collapsedVariantCount?: number;
+  collapsedMaxUnitCopper?: number;
 }
 
 const CHANNEL_RANK: Record<string, number> = {
@@ -162,4 +176,99 @@ export function sortCreatureLoot<T extends SortableLootItem>(
       a.itemName.localeCompare(b.itemName)
     );
   });
+}
+
+function stripSuffixFromName(
+  fullName: string,
+  suffixName?: string | null
+): string {
+  const trimmed = fullName.trim();
+  if (suffixName) {
+    const suf = suffixName.trim();
+    if (
+      suf.length > 0 &&
+      trimmed.length > suf.length + 1 &&
+      trimmed.toLowerCase().endsWith(suf.toLowerCase())
+    ) {
+      return trimmed.slice(0, trimmed.length - suf.length).trim();
+    }
+  }
+  const idx = trimmed.lastIndexOf(" of ");
+  if (idx > 0) return trimmed.slice(0, idx).trim();
+  return trimmed;
+}
+
+/**
+ * Collapses expanded random-enchant variant rows (`suffixId != null`) back into
+ * one summary row per `(itemId, lootMethod)` while preserving exact total dropRate
+ * and exact total EV/kill so collapsed view matches the creature's true EGPH.
+ */
+export function collapseVariantLootRows<T extends SortableLootItem>(
+  items: readonly T[]
+): T[] {
+  const plain: T[] = [];
+  const groups = new Map<string, T[]>();
+
+  for (const item of items) {
+    if (!item.suffixId) {
+      plain.push(item);
+      continue;
+    }
+    const key = `${item.itemId}:${item.lootMethod}`;
+    let list = groups.get(key);
+    if (!list) {
+      list = [];
+      groups.set(key, list);
+    }
+    list.push(item);
+  }
+
+  const collapsed: T[] = [...plain];
+
+  for (const group of groups.values()) {
+    const rep = group[0]!;
+    const totalDropRate = Math.min(
+      1,
+      group.reduce((acc, g) => acc + g.dropRate, 0)
+    );
+    const totalGrossEv = group.reduce(
+      (acc, g) => acc + g.expectedGrossEvPerKillCopper,
+      0
+    );
+    const totalAdjEv = group.reduce(
+      (acc, g) => acc + g.expectedLiquidityAdjustedPerKillCopper,
+      0
+    );
+    const avgUnit = Math.round(
+      group.reduce((acc, g) => acc + g.unitGrossCopper, 0) / group.length
+    );
+    const maxUnit = Math.max(...group.map((g) => g.unitGrossCopper));
+    const hasAh = group.some((g) => g.liquidationChannel === "auction_house");
+    const ahItem = group.find((g) => g.liquidationChannel === "auction_house");
+    const baseName = stripSuffixFromName(rep.itemName, rep.suffixName);
+    const baseSource = rep.source.replace(/\s*·\s*1\/\d+\s*suffix$/i, "");
+
+    collapsed.push({
+      ...rep,
+      variantId: null,
+      suffixId: null,
+      suffixName: null,
+      variantPriceNote: null,
+      itemName: baseName,
+      dropRate: totalDropRate,
+      liquidationChannel: hasAh ? "auction_house" : rep.liquidationChannel,
+      effectiveCommissionRate: hasAh
+        ? (ahItem?.effectiveCommissionRate ?? rep.effectiveCommissionRate)
+        : rep.effectiveCommissionRate,
+      unitGrossCopper: avgUnit,
+      expectedGrossEvPerKillCopper: totalGrossEv,
+      expectedLiquidityAdjustedPerKillCopper: totalAdjEv,
+      dropMetrics: computeDropProbabilityMetrics(totalDropRate),
+      source: baseSource,
+      collapsedVariantCount: group.length,
+      collapsedMaxUnitCopper: maxUnit,
+    });
+  }
+
+  return collapsed;
 }
